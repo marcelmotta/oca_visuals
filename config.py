@@ -129,6 +129,7 @@ SCENE_PROGRAM_MAP = {
     3: "logo_pulse",
     4: "logo_video_pulse",
     5: "kaleidoscope_video",
+    6: "hollow_chars_pulse",
 }
 
 # How long a crossfade between scenes takes, in seconds.

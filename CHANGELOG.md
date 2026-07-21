@@ -12,6 +12,30 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v18 — 2026-07-21 — New scene 7: hollow-character sequence from client artwork
+
+- **New scene 7 — `hollow_chars_pulse.py`**, a structural copy of scene
+  5 (same 3D camera-angle plane, background pixel-cloud, per-character
+  particle burst, fractal/noise/braid background, glitch effect,
+  pad-triggered fractal bloom) but displaying a STATIC image instead of
+  the spin-loop video.
+- **Source asset extracted from the client's `OCA_clientversion.ai`**
+  (page 2): identified three large connected hollow-outline text
+  shapes via connected-component analysis on the rendered page, cross-
+  checked against the PDF's actual glyph position data (which showed
+  fragmented per-letter runs consistent with "RHYTHM GATHERING" /
+  "SOUND FLOWING" arranged in a circular layout) — isolated just those
+  three shapes (excluding surrounding poster text like artist names,
+  date, and venue info) into a clean transparent PNG
+  (`assets/hollow_chars.png`).
+- **Flagged for confirmation**: this identification was done
+  programmatically (OCR did not work on the stylized connected font),
+  so the extracted asset was shared for a visual sanity check before
+  being wired in. The letter-burst positions in this new scene use a
+  single placeholder center anchor rather than mapped per-character
+  positions, since this artwork's internal layout hasn't been analyzed
+  the way the OCA logo's three circles were.
+
 ## v17 — 2026-07-21 — Recovery: v12-v15 work restored after silent data loss
 
 **What happened:** while implementing the v16 cursor fix, discovered
