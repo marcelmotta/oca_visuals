@@ -24,7 +24,6 @@ from scenes.noise_field import NoiseFieldScene
 from scenes.logo_pulse import LogoPulseScene
 from scenes.logo_video_pulse import LogoVideoPulseScene
 from scenes.kaleidoscope_video import KaleidoscopeVideoScene
-from scenes.hollow_chars_pulse import HollowCharsPulseScene
 
 SCENE_CLASSES = {
     "particle_burst": ParticleBurstScene,
@@ -33,7 +32,6 @@ SCENE_CLASSES = {
     "logo_pulse": LogoPulseScene,
     "logo_video_pulse": LogoVideoPulseScene,
     "kaleidoscope_video": KaleidoscopeVideoScene,
-    "hollow_chars_pulse": HollowCharsPulseScene,
 }
 
 BLIT_VERTEX = """

@@ -12,6 +12,14 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v19 — 2026-07-21 — Scene 7 removed
+
+- **Removed `hollow_chars_pulse.py`** (scene 7) and its asset
+  (`assets/hollow_chars.png`) entirely, along with all registrations
+  in `config.py`, `scene_manager.py`, and `main.py`. Back to 6 scenes
+  (program-change 0-5). The hollow-character identification from v18
+  wasn't confirmed as correct before being asked to remove it.
+
 ## v18 — 2026-07-21 — New scene 7: hollow-character sequence from client artwork
 
 - **New scene 7 — `hollow_chars_pulse.py`**, a structural copy of scene
