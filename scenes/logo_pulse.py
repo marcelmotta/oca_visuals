@@ -141,21 +141,26 @@ void main() {
     color += fractal_color * 0.65;
 
     // Translucent, glowing braid across the horizon: three strands
-    // weaving slowly, each a soft sine curve offset in phase so they
-    // cross over one another like a braid, plus a gentle flicker in a
-    // contrasting color that randomly brightens small stretches of the
-    // strands over time (like light catching a moving thread).
+    // weaving slowly, each a sine curve offset in phase (so they cross
+    // like a braid) PLUS a noise-driven wobble so the path is erratic
+    // rather than a perfectly smooth periodic wave, plus a gentle
+    // flicker in a contrasting color that randomly brightens small
+    // stretches of the strands over time (like light catching a moving
+    // thread). Thinner than before (higher falloff exponent).
     vec3 braid_color = hsv2rgb(vec3(fract(u_hue + 0.55), 0.45, 1.0));
     vec3 flicker_color = hsv2rgb(vec3(fract(u_hue + 0.05), 0.85, 1.0));
     float braid = 0.0;
     float flicker_glow = 0.0;
     for (int i = 0; i < 3; i++) {
         float phase = float(i) * 2.094395; // 2*pi/3 apart
+        float wobble = noise(vec2(cam_uv.x * 3.5 + float(i) * 11.0, u_time * 0.35 + phase))
+            + 0.5 * noise(vec2(cam_uv.x * 9.0 - float(i) * 5.0, u_time * 0.6));
         float strand_y = -0.05
             + 0.07 * sin(cam_uv.x * 2.6 + u_time * 0.12 + phase)
-            + 0.025 * sin(cam_uv.x * 6.3 - u_time * 0.07 + phase * 1.7);
+            + 0.025 * sin(cam_uv.x * 6.3 - u_time * 0.07 + phase * 1.7)
+            + 0.05 * (wobble - 0.75); // erratic wobble, centered around 0
         float d = abs(cam_uv.y - strand_y);
-        float strand_glow = exp(-d * d * 260.0);
+        float strand_glow = exp(-d * d * 900.0); // much thinner than before (was 260.0)
         braid += strand_glow;
 
         // Gentle flicker: a slow-changing per-strand random value picks
@@ -170,19 +175,27 @@ void main() {
     color += braid_color * braid * 0.45;
     color += flicker_color * flicker_glow * 0.5;
 
-    // Gentle glow pulses (letter triggers): soft expanding rings, faded
-    // in quickly and out slowly, much softer than discrete particles.
-    const float PULSE_MAX_AGE = 2.2;
-    const float PULSE_SPEED = 0.55;
+    // Gentle glow pulses (letter triggers): a dim, diffuse, grainy
+    // expanding band rather than a bright smooth ring — the noise
+    // "grain" term breaks the glow up into sparse, dusty specks so it
+    // reads as diffuse texture rather than a clean light source.
+    const float PULSE_MAX_AGE = 2.4;
+    const float PULSE_SPEED = 0.5;
     for (int i = 0; i < MAX_PULSES; i++) {
         float age = u_pulse_age[i];
         if (age < PULSE_MAX_AGE) {
             float radius = age * PULSE_SPEED;
             float d = length(uv - u_pulse_pos[i]);
-            float ring = exp(-pow(d - radius, 2.0) * 30.0);
-            float fade_in = smoothstep(0.0, 0.2, age);
+            // Much wider/softer band than before (lower exponent).
+            float band = exp(-pow(d - radius, 2.0) * 7.0);
+            // Grainy noise texture, biased toward sparse bright flecks
+            // rather than a uniform gradient.
+            float grain = noise(uv * 55.0 + u_pulse_pos[i] * 9.0 + age * 8.0);
+            grain = pow(grain, 2.0);
+            float fade_in = smoothstep(0.0, 0.25, age);
             float fade_out = 1.0 - smoothstep(0.0, PULSE_MAX_AGE, age);
-            color += u_pulse_color[i] * ring * fade_in * fade_out * 0.5;
+            // Considerably dimmer overall than before (was 0.5).
+            color += u_pulse_color[i] * band * grain * fade_in * fade_out * 0.22;
         }
     }
 

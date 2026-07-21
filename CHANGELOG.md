@@ -12,6 +12,19 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v4 — 2026-07-21 — Dimmer/diffuse/noisy pulse, thinner erratic braid strands
+
+- **Scenes 4 & 5 — glow pulse made dimmer, more diffuse, and grainy.**
+  The band is now much wider/softer (lower falloff exponent) instead of
+  a crisp ring, a noise-based "grain" term breaks it up into sparse,
+  dusty flecks rather than a smooth gradient, and overall intensity was
+  cut significantly (roughly 2.3x dimmer).
+- **Scenes 4 & 5 — braid strands are now thin, with an erratic
+  trajectory.** Falloff exponent raised substantially (much thinner
+  lines), and a two-octave noise wobble was added on top of the
+  existing sine curves so the path drifts irregularly instead of
+  following a perfectly smooth periodic wave.
+
 ## v3 — 2026-07-21 — Gentler pulse, bigger points, 3-axis pop origins, denser fractal, braid flicker
 
 - **Scenes 4 & 5 — pulsation replaced with a gentle glow.** The
