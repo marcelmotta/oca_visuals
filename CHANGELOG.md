@@ -12,6 +12,32 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v2 — 2026-07-21 — Bug fixes + more aggressive logo camera
+
+- **Scene 2 — fixed a real white-out bug.** The previous version's
+  fix (frame-rate-independent decay) exposed a second bug: the shader
+  was accumulating `prev*decay + new_glow` every frame, which is
+  unbounded — once decay correctly became a slow real-time value, more
+  brightness was added each frame than could ever decay away, so the
+  whole buffer rocketed to solid white within a second or two. Fixed by
+  switching to a bounded decay-weighted blend toward a target color
+  (`mix(target, prev, decay)`) instead of open-ended addition — this
+  can never blow out, while still producing the same slow trailing
+  effect.
+- **Scenes 4 & 5 — letter bursts are now a coherent expanding RING**
+  instead of a scattered directional burst (same speed/life for every
+  particle in the ring, so they move together as one pulse rather than
+  spreading into a cloud) — reads much more clearly as a "pulsation."
+- **Scenes 4 & 5 — fractal made more present.** Increased spatial
+  frequency (zoomed out to reveal more detail) and raised opacity;
+  left the `c`-vector rotation speed (the "bloom"/morph speed)
+  unchanged, as requested.
+- **Scenes 4 & 5 — more aggressive 3D camera angles.** Yaw and pitch
+  amplitudes roughly doubled, and a Z-axis roll was added (there was no
+  roll at all before) — verified numerically that even at maximum
+  combined rotation the plane stays safely within the camera's near/far
+  planes (no clipping).
+
 ## v1 — 2026-07-21 — Baseline snapshot
 
 This is the first tagged version, taken after the first several rounds

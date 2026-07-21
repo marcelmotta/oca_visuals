@@ -121,11 +121,14 @@ void main() {
 
     // Fractal layer: sits furthest back, adding fine self-similar detail
     // and a sense of depth beneath the noise wash. `c` drifts slowly
-    // around a small circle so the pattern continuously morphs.
+    // around a small circle so the pattern continuously morphs — that
+    // rotation speed (u_time * 0.03) is the "bloom speed" and is left
+    // unchanged; only the spatial scale/opacity below were increased so
+    // the pattern itself is far more visually present.
     vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));
-    float f = julia(cam_uv * 0.55, julia_c);
-    vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.6, f * f));
-    color += fractal_color * 0.30;
+    float f = julia(cam_uv * 1.35, julia_c);
+    vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
+    color += fractal_color * 0.55;
 
     // Translucent, glowing braid across the horizon: three strands
     // weaving slowly, each a soft sine curve offset in phase so they
@@ -205,6 +208,16 @@ def _rotation_y(angle):
         [c, 0, s, 0],
         [0, 1, 0, 0],
         [-s, 0, c, 0],
+        [0, 0, 0, 1],
+    ], dtype="f4")
+
+
+def _rotation_z(angle):
+    c, s = math.cos(angle), math.sin(angle)
+    return np.array([
+        [c, -s, 0, 0],
+        [s, c, 0, 0],
+        [0, 0, 1, 0],
         [0, 0, 0, 1],
     ], dtype="f4")
 
@@ -320,14 +333,20 @@ class LogoPulseScene(Scene):
         # 2. Logo plane transform, computed here (not just at draw time)
         # because the letter-burst spawn below needs it to know where
         # each character currently sits on screen.
+        #
+        # More aggressive rotation on all three axes than before:
+        # yaw/pitch amplitudes roughly doubled, and a new Z-axis roll
+        # added (there was no roll at all previously). Drum punches now
+        # kick yaw AND roll harder for a snappier per-hit tilt.
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
-        yaw = 0.35 * math.sin(cam_time * 0.15) + cam_punch * 0.30
-        pitch = 0.22 * math.sin(cam_time * 0.11 + 1.0)
+        yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.55
+        pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
+        roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.35
 
         aspect = target.size[0] / target.size[1]
         proj = _perspective_matrix(self.fov, aspect, 0.1, 10.0)
-        model = _rotation_x(pitch) @ _rotation_y(yaw)
+        model = _rotation_z(roll) @ _rotation_x(pitch) @ _rotation_y(yaw)
         view = _translation_z(-self.distance)
         mvp = proj @ view @ model
 
@@ -344,9 +363,9 @@ class LogoPulseScene(Scene):
             ndc = clip[:, :2] / clip[:, 3:4]
             for i, (nx, ny) in enumerate(ndc):
                 char_hue = (self.hue + i / 3.0) % 1.0
-                self.letter_particles.spawn_burst(
-                    origin=(float(nx), float(ny)), hue=char_hue, n=200,
-                    speed_range=(0.5, 1.4), life_range=(1.8, 3.2), sat=0.9,
+                self.letter_particles.spawn_ring_burst(
+                    origin=(float(nx), float(ny)), hue=char_hue,
+                    n=120, speed=1.0, life=1.6, sat=0.9,
                 )
             self.letter_trigger_pending = False
 

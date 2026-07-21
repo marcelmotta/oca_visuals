@@ -111,6 +111,32 @@ class ParticleField:
         hues = (hue + np.random.uniform(-0.05, 0.05, n)) % 1.0
         self.color[idx] = hsv_to_rgb_np(hues, sat, 1.0)
 
+    def spawn_ring_burst(self, origin=(0.0, 0.0), hue=0.0, n=90,
+                          speed=0.9, life=1.4, sat=0.9):
+        """Spawns a coherent expanding RING of particles (all evenly
+        spaced in angle, all moving outward at the same speed, all
+        sharing the same lifespan) instead of a scattered/directional
+        burst — this reads clearly as a single pulsing ring rather than
+        a spray of individual points, which is what makes it feel like a
+        pulsation rather than an explosion.
+        """
+        n = min(n, self.max_particles)
+        idx = (np.arange(n) + self.cursor) % self.max_particles
+        self.cursor = (self.cursor + n) % self.max_particles
+
+        theta = np.linspace(0.0, 2 * np.pi, n, endpoint=False)
+        dirs = np.stack([np.cos(theta), np.sin(theta), np.zeros(n)], axis=-1)
+
+        self.position[idx] = np.array([origin[0], origin[1], 0.0], dtype="f4")
+        # Same speed and same life for every particle in the ring — this
+        # is what keeps them moving together as a single coherent ring
+        # instead of spreading into a scattered cloud over time.
+        self.velocity[idx] = dirs * speed
+        self.life[idx] = life
+        self.max_life[idx] = life
+        hues = (hue + np.random.uniform(-0.02, 0.02, n)) % 1.0
+        self.color[idx] = hsv_to_rgb_np(hues, sat, 1.0)
+
     def update(self, dt, drag=0.985):
         alive = self.life > 0.0
         self.velocity[alive] *= drag

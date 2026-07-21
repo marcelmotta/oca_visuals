@@ -77,7 +77,6 @@ void main() {
     prev += texture(u_prev_frame, sampled_uv - vec2(u_texel.x, 0.0) * u_blur).rgb * 0.15;
     prev += texture(u_prev_frame, sampled_uv + vec2(0.0, u_texel.y) * u_blur).rgb * 0.15;
     prev += texture(u_prev_frame, sampled_uv - vec2(0.0, u_texel.y) * u_blur).rgb * 0.15;
-    prev *= u_decay;
 
     float d_bg = length(v_uv - u_bg_pos);
     float bg = smoothstep(u_bg_radius, 0.0, d_bg) * 0.5;
@@ -85,7 +84,22 @@ void main() {
     float d_fg = length(v_uv - u_fg_pos);
     float fg = smoothstep(u_fg_radius, 0.0, d_fg);
 
-    vec3 result = prev + u_bg_color * bg + u_fg_color * fg;
+    // This frame's "target" color at this pixel (what the blobs alone
+    // would look like, with nothing accumulated).
+    vec3 target = u_bg_color * bg + u_fg_color * fg;
+
+    // IMPORTANT: this is a bounded blend toward `target`, NOT an
+    // additive accumulation. Previously this was `prev*u_decay + bg +
+    // fg`, which — once decay became a genuine slow real-time half-life
+    // instead of a fast per-frame multiplier — meant more energy was
+    // injected every frame than could ever decay away, so the buffer
+    // rocketed to solid white within a second or two. `mix(target,
+    // prev, decay)` is mathematically equivalent to `decay*prev +
+    // (1-decay)*target`: it still produces the same slow, smeared
+    // trailing behavior (decay close to 1 = slow drift toward the new
+    // target = long trails), but the result can never exceed the
+    // brightest of `target` or `prev`, so it can't blow out to white.
+    vec3 result = mix(target, prev, u_decay);
     f_color = vec4(result, 1.0);
 }
 """
@@ -182,7 +196,7 @@ class FeedbackTrailsScene(Scene):
         dst_fbo.use()
         src_fbo.color_attachments[0].use(location=0)
         self.feedback_program["u_prev_frame"] = 0
-        self.feedback_program["u_decay"] = float(self.decay + self.pulse * 0.015)
+        self.feedback_program["u_decay"] = float(max(self.decay - self.pulse * 0.05, 0.0))
         self.feedback_program["u_zoom"] = 0.997
         self.feedback_program["u_texel"] = (1.0 / self.work_size[0], 1.0 / self.work_size[1])
         self.feedback_program["u_blur"] = self.blur_amount

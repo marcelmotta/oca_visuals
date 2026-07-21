@@ -40,7 +40,7 @@ from particle_field import ParticleField
 # language and only the source imagery differs.
 from scenes.logo_pulse import (
     BG_VERTEX, BG_FRAGMENT, LOGO_VERTEX, LOGO_FRAGMENT,
-    _perspective_matrix, _rotation_x, _rotation_y, _translation_z,
+    _perspective_matrix, _rotation_x, _rotation_y, _rotation_z, _translation_z,
 )
 
 VIDEO_PATH = os.path.join(
@@ -182,15 +182,17 @@ class LogoVideoPulseScene(Scene):
 
         # Plane transform, computed here (not just at draw time) because
         # the letter-burst spawn below needs it to know where each
-        # character currently sits on screen.
+        # character currently sits on screen. Same aggressive yaw/pitch
+        # amplitudes and new roll axis as logo_pulse.py.
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
-        yaw = 0.35 * math.sin(cam_time * 0.15) + cam_punch * 0.30
-        pitch = 0.22 * math.sin(cam_time * 0.11 + 1.0)
+        yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.55
+        pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
+        roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.35
 
         aspect = target.size[0] / target.size[1]
         proj = _perspective_matrix(self.fov, aspect, 0.1, 10.0)
-        model = _rotation_x(pitch) @ _rotation_y(yaw)
+        model = _rotation_z(roll) @ _rotation_x(pitch) @ _rotation_y(yaw)
         view = _translation_z(-self.distance)
         mvp = proj @ view @ model
 
@@ -206,9 +208,9 @@ class LogoVideoPulseScene(Scene):
             ndc = clip[:, :2] / clip[:, 3:4]
             for i, (nx, ny) in enumerate(ndc):
                 char_hue = (self.hue + i / 3.0) % 1.0
-                self.letter_particles.spawn_burst(
-                    origin=(float(nx), float(ny)), hue=char_hue, n=200,
-                    speed_range=(0.5, 1.4), life_range=(1.8, 3.2), sat=0.9,
+                self.letter_particles.spawn_ring_burst(
+                    origin=(float(nx), float(ny)), hue=char_hue,
+                    n=120, speed=1.0, life=1.6, sat=0.9,
                 )
             self.letter_trigger_pending = False
 
