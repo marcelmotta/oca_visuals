@@ -12,6 +12,25 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v5 — 2026-07-21 — Split drums/percussion mapping, letter effect reworked as gentle particles
+
+- **New MIDI mapping split.** "Mapping 1" (the `drums` role) now covers
+  only channels 1-3 (kick, snare, snare2/clap) — channels 4-7 (hi-hat
+  1/2, perc 1/2) were moved out into a brand new `percussion` mapping,
+  kept completely separate. This changes what channels 4-7 drive
+  everywhere `drums` was previously read (camera tempo/punch detection,
+  scene 2's pulse, scene 3's brightness CC) — they no longer contribute
+  to those, only channels 1-3 do now.
+- **Scenes 4 & 5 — glow pulse concept fully replaced.** The analytic
+  shader-based glow (from v3/v4) is gone entirely — removed the
+  `u_pulse_*` uniforms and shader code. In its place: a real, gentle
+  burst of particles from each character (few particles, slow speed,
+  muted saturation), using the same reusable `ParticleField` as the
+  background pixel-cloud. Crucially, this new burst is triggered by the
+  **new `percussion` mapping**, not `drums` — so hi-hats/perc now
+  animate the characters, while kick/snare/snare2 still drive the
+  background pixel-cloud and camera punch as before.
+
 ## v4 — 2026-07-21 — Dimmer/diffuse/noisy pulse, thinner erratic braid strands
 
 - **Scenes 4 & 5 — glow pulse made dimmer, more diffuse, and grainy.**

@@ -2,10 +2,11 @@
 logo_video_pulse.py
 --------------------
 Scene 5: an exact copy of scene 4 (logo_pulse.py) — same 3D camera-angle
-plane, same background pixel-cloud + per-character letter bursts, same
-fractal/noise/braid background — except the flat PNG logo is replaced
-with the attached spin-loop video (assets/oca_spin_loop_v3.mp4) playing
-on the plane instead.
+plane, same background pixel-cloud + per-character particle burst
+(triggered by the "percussion" mapping), same fractal/noise/braid
+background — except the flat PNG logo is replaced with the attached
+spin-loop video (assets/oca_spin_loop_v3.mp4) playing on the plane
+instead.
 
 VIDEO PLAYBACK APPROACH:
 The video is decoded frame-by-frame with OpenCV and streamed into ONE
@@ -32,7 +33,7 @@ import moderngl
 import cv2
 
 from scene_base import Scene
-from utils import make_fullscreen_quad_vao, hsv_to_rgb_np
+from utils import make_fullscreen_quad_vao
 from particle_field import ParticleField
 
 # Reuse the exact same background (fractal + noise + braid) and logo-
@@ -116,13 +117,7 @@ class LogoVideoPulseScene(Scene):
         self.distance = half_h / math.tan(self.fov / 2.0)
 
         self.particles = ParticleField(ctx, max_particles=3000)
-
-        MAX_PULSES = 9
-        self.pulse_pos = np.zeros((MAX_PULSES, 2), dtype="f4")
-        self.pulse_age = np.full(MAX_PULSES, 999.0, dtype="f4")
-        self.pulse_color = np.zeros((MAX_PULSES, 3), dtype="f4")
-        self.pulse_cursor = 0
-        self.max_pulses = MAX_PULSES
+        self.letter_particles = ParticleField(ctx, max_particles=2000, edge_fade=True)
 
         self.time = 0.0
         self.pulse = 0.0
@@ -158,8 +153,7 @@ class LogoVideoPulseScene(Scene):
 
         triggered = bool(midi.role_triggers("drums"))
         self.pulse = 1.0 if triggered else self.pulse * 0.95
-        self.letter_trigger_pending = triggered
-        self.pulse_age += dt
+        self.letter_trigger_pending = bool(midi.role_triggers("percussion"))
 
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
@@ -172,6 +166,7 @@ class LogoVideoPulseScene(Scene):
                 speed_range=(0.4, 1.2), life_range=(2.0, 4.0), sat=0.9,
             )
         self.particles.update(dt)
+        self.letter_particles.update(dt)
 
     def render(self, target):
         ctx = self.ctx
@@ -201,13 +196,10 @@ class LogoVideoPulseScene(Scene):
             ndc = clip[:, :2] / clip[:, 3:4]
             for i, (nx, ny) in enumerate(ndc):
                 char_hue = (self.hue + i / 3.0) % 1.0
-                slot = self.pulse_cursor
-                self.pulse_pos[slot] = (float(nx), float(ny))
-                self.pulse_age[slot] = 0.0
-                self.pulse_color[slot] = hsv_to_rgb_np(
-                    np.array([char_hue]), np.array([0.7]), np.array([1.0])
-                )[0]
-                self.pulse_cursor = (self.pulse_cursor + 1) % self.max_pulses
+                self.letter_particles.spawn_burst(
+                    origin=(float(nx), float(ny)), hue=char_hue, n=45,
+                    speed_range=(0.12, 0.35), life_range=(2.0, 3.5), sat=0.55,
+                )
             self.letter_trigger_pending = False
 
         self.bg_program["u_time"] = self.time
@@ -216,12 +208,10 @@ class LogoVideoPulseScene(Scene):
         self.bg_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
         self.bg_program["u_cam_rot"] = cam.rotation if cam else 0.0
         self.bg_program["u_cam_zoom"] = cam.zoom if cam else 1.0
-        self.bg_program["u_pulse_pos"] = [tuple(p) for p in self.pulse_pos]
-        self.bg_program["u_pulse_age"] = [float(a) for a in self.pulse_age]
-        self.bg_program["u_pulse_color"] = [tuple(c) for c in self.pulse_color]
         self.bg_vao.render(moderngl.TRIANGLES)
 
         self.particles.render()
+        self.letter_particles.render()
 
         mvp_col_major = mvp.T.astype("f4").copy()
 

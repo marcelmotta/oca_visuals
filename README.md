@@ -56,15 +56,17 @@ routing from Ableton instead, or to remap):
 
 | SEQTRAK channel | Instrument | Role | Drives |
 |---|---|---|---|
-| 1–7 | Kick, Snare, Snare2/Clap, Hi-hat 1/2, Perc 1/2 | `drums` | Big particle bursts / bright pulses (any kit hit) |
+| 1–3 | Kick, Snare, Snare2/Clap | `drums` | Big particle bursts / bright pulses (scenes 1-3); logo/video scenes' shared camera "punch" and background pixel-cloud |
+| 4–7 | Hi-hat 1/2, Perc 1/2 | `percussion` | Gentle per-character particle burst in the logo/video scenes (scenes 4-5 only) |
 | 8 | Bass/Synth 1 | `bass` | Continuous motion speed, swirl, trail length (via CC) |
 | 9–10 | Synth 2, Pads/DX | `keys` | Color / hue, plus soft color-ring bursts |
 | 11 | Sampler | `texture` | Slow ambient twinkles / ripples |
 
 In Ableton, set each MIDI track's output channel under that track's
 routing to match. A role can point at a single channel or a list of
-channels (see `drums` grouping every percussion channel together) —
-adjust `CHANNEL_ROLES` directly if you want different groupings.
+channels (see `drums` and `percussion`, which used to be one combined
+mapping and are now deliberately kept separate) — adjust
+`CHANNEL_ROLES` directly if you want different groupings.
 
 ## 4. Project structure
 

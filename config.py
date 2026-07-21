@@ -57,11 +57,13 @@ CC_MAP = {
 #   Ch 5  Hi-hat 2        Ch 11 Sampler
 #   Ch 6  Percussion 1
 #
-# A role can map to a single channel OR a list of channels (e.g. "drums"
-# below groups every percussive channel together, so any hit anywhere in
-# the kit triggers the same "big reactive hit" behavior). If routing
-# Ableton instead, just send each instrument out on the matching channel
-# number for the same behavior.
+# A role can map to a single channel OR a list of channels. "drums" and
+# "percussion" below are two separate groupings — "drums" covers just
+# kick/snare/snare2 (channels 1-3), while "percussion" covers the
+# hi-hats and other percussion (channels 4-7) as its own mapping, so
+# scenes can react differently to "drums" hits vs "percussion" hits. If
+# routing Ableton instead, just send each instrument out on the matching
+# channel number for the same behavior.
 CHANNEL_ROLES = {
     # Individual channels, in case you want finer per-instrument control
     # in a scene later (not required by the current scenes).
@@ -75,7 +77,8 @@ CHANNEL_ROLES = {
     "sampler": 10,
 
     # Broader groupings the current scenes actually read from:
-    "drums": [0, 1, 2, 3, 4, 5, 6],  # any kit hit -> big bursts / pulses
+    "drums": [0, 1, 2],       # channels 1-3 (kick, snare, snare2/clap) -> big bursts / pulses
+    "percussion": [3, 4, 5, 6],  # channels 4-7 (hi-hat 1+2, perc 1+2) -> its own mapping, kept separate from "drums"
     "keys": [8, 9],                   # Synth 2 + Pads/DX -> color
     "texture": [10],                  # Sampler -> ambient twinkles/ripples
 }
