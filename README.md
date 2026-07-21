@@ -43,6 +43,10 @@ python3 main.py
 - **ESC** quits.
 - **1 / 2 / 3** keys manually switch scenes (for testing without a MIDI
   controller connected).
+- The mouse cursor auto-hides after ~2 seconds of no movement (like a
+  video player) and reappears instantly on any movement — see
+  `CURSOR_IDLE_HIDE_SECONDS` in `config.py` to change the delay or
+  disable it entirely.
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
   bursts/pulses depending on the active scene; CC1, CC74, CC71, CC7
   control color/intensity/trail-length/brightness; program-change

@@ -14,6 +14,9 @@ CONTROLS WHILE RUNNING:
 - Press ESC or close the window to quit.
 - Press number keys 1/2/3 to manually switch scenes for testing, even
   with no MIDI device connected yet.
+- The mouse cursor auto-hides after a couple seconds of no movement
+  (like a video player) and reappears instantly on any movement — see
+  CURSOR_IDLE_HIDE_SECONDS in config.py to change the delay or disable.
 """
 
 import time
@@ -22,6 +25,7 @@ import moderngl
 
 from config import (
     WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, FULLSCREEN, TARGET_FPS,
+    CURSOR_IDLE_HIDE_SECONDS,
 )
 from midi_input import MidiState, open_midi_port, poll_midi
 from scene_manager import SceneManager
@@ -108,6 +112,23 @@ def main():
 
     glfw.set_framebuffer_size_callback(window, framebuffer_size_callback)
 
+    # Cursor auto-hide: like a video player or any other fullscreen
+    # visual app, the mouse pointer shouldn't just sit on screen forever
+    # once you stop moving it. Any mouse movement resets the idle timer
+    # and instantly shows the cursor again; it hides itself after
+    # CURSOR_IDLE_HIDE_SECONDS of no movement. Set that to None in
+    # config.py to disable this and always show the cursor.
+    cursor_state = {"last_move_time": time.perf_counter(), "hidden": False}
+
+    def cursor_pos_callback(_window, _x, _y):
+        cursor_state["last_move_time"] = time.perf_counter()
+        if cursor_state["hidden"]:
+            glfw.set_input_mode(window, glfw.CURSOR, glfw.CURSOR_NORMAL)
+            cursor_state["hidden"] = False
+
+    if CURSOR_IDLE_HIDE_SECONDS is not None:
+        glfw.set_cursor_pos_callback(window, cursor_pos_callback)
+
     last_time = time.perf_counter()
     print("Running. Press ESC to quit, or 1/2/3/4/5/6 to switch scenes manually.")
 
@@ -124,6 +145,11 @@ def main():
         midi_state.begin_frame()
         poll_midi(midi_port, midi_state)
         camera.update(dt, midi_state)
+
+        if CURSOR_IDLE_HIDE_SECONDS is not None and not cursor_state["hidden"]:
+            if now - cursor_state["last_move_time"] >= CURSOR_IDLE_HIDE_SECONDS:
+                glfw.set_input_mode(window, glfw.CURSOR, glfw.CURSOR_HIDDEN)
+                cursor_state["hidden"] = True
 
         ctx.screen.use()
         # Re-assert the viewport every frame: binding other framebuffers

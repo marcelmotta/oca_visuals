@@ -12,6 +12,74 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v16 — 2026-07-21 — Auto-hiding mouse cursor
+
+- **Mouse cursor now auto-hides after ~2 seconds of no movement**
+  (like a video player or any other fullscreen visual app), and
+  reappears instantly the moment the mouse moves again. Configurable
+  via `CURSOR_IDLE_HIDE_SECONDS` in `config.py` (set to `None` to
+  disable and always show the cursor).
+
+## v15 — 2026-07-21 — Fractal bloom variety + smoother blend, scene 6 always-lit characters
+
+- **Scenes 4 & 5 — fractal bloom no longer always starts from the same
+  spot.** Replaced the single sweep fixed to screen center with TWO
+  overlapping "bloom cells," each with its own randomized origin.
+  Scene 4 (auto mode): the two cells are staggered by half the cycle
+  length, so one is always fading in while the other fades out —
+  verified numerically that combined brightness never drops below 60%
+  of full. Scene 5 (triggered mode): a new pad trigger shifts the
+  current bloom into a "previous" cell that keeps fading out on its
+  own while a fresh one starts fading in, so consecutive triggers
+  blend into each other instead of cutting off abruptly.
+- **Scenes 4 & 5 — smoother-feeling transition.** Switched the reveal
+  comparison from raw distance to distance-squared, since screen area
+  grows with r² and sweeping raw distance reveals area unevenly.
+- **Scene 6 — characters are now always lit** at a legible baseline;
+  the MIDI-clock chase is a brighten + slight outward glide layered on
+  top, not a visibility toggle.
+
+## v14 — 2026-07-21 — Fixed mirrored text, rebuilt as per-character MIDI-clock-driven pop chase
+
+- **Found the actual cause of the mirrored/wrong-order characters** —
+  the previous baked-ring + counter-flip approach was mathematically a
+  no-op, not a fix; the real issue was in how per-character rotation
+  was baked into the source image.
+- **Redesigned around two individual glyph textures** ("温"/"泉",
+  unrotated), each ring position its own controllable "slot," using the
+  angular position as the glyph's own texture coordinate directly —
+  correct orientation by construction.
+- **Real MIDI Clock support added** (`midi_input.py`) — tracks the
+  standard 24-pulses-per-quarter-note sync signal and fires a
+  `triplet_tick_pending` event every 8 pulses. Requires clock/sync
+  output enabled at the source (off by default on most gear/DAWs).
+- **Sequential per-character pop, timed to that clock**, order
+  configurable via `RING_POP_ORDER` (clockwise / counter-clockwise /
+  random).
+
+## v13 — 2026-07-21 — Scene 6 psychedelic background + text ring, scene 5 pad-triggered fractal
+
+- **Scene 6 background layer made genuinely psychedelic and more
+  Japanese**: a real hex-tessellated asanoha (hemp-leaf) lattice
+  layered with the polar crossing-line/petal motif, and a hue that
+  cycles with angle, radius, and time simultaneously.
+- **Scene 6 — "温泉" text ring added**, pre-rendered via the Noto Sans
+  CJK font for portability (not rendered live from a font at runtime).
+- **Scene 5 — fractal bloom triggered by channel 10 ("pads")** instead
+  of cycling automatically; scene 4 keeps its automatic cycle.
+
+## v12 — 2026-07-21 — Scene 6: contrasting background layer + fixed elliptical logo mirroring
+
+- **Fixed elliptical mirrored logo elements**: the kaleidoscope's fold
+  was aspect-corrected for screen space, but the resulting sample
+  position wasn't corrected for the video texture's OWN aspect ratio
+  (the source is portrait) — added `u_video_aspect` to fix this
+  separately.
+- **New background kaleidoscope layer, gated by channel 9 ("synth2")**:
+  a procedural asanoha-inspired motif fills the empty/black areas
+  behind the foreground video-kaleidoscope while that channel has a
+  note held, eased in/out.
+
 ## v11 — 2026-07-21 — Scenes 1/2 aspect-ratio fix, validated across all scenes, new kaleidoscope scene
 
 - **Root cause of scenes 1 & 2 looking "sparse and close": found and

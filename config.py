@@ -30,6 +30,11 @@ WINDOW_TITLE = "Oca Collective — Visuals"
 FULLSCREEN = False  # set True for showtime on the projector/output screen
 TARGET_FPS = 60
 
+# Seconds of no mouse movement before the cursor auto-hides (like video
+# players / other fullscreen apps). Moving the mouse always brings it
+# back instantly. Set to None to disable and always show the cursor.
+CURSOR_IDLE_HIDE_SECONDS = 2.0
+
 # A note on 4K performance: the shader work (noise, the Julia-set
 # fractal, particle rendering) scales with pixel count, and 4K has
 # ~9x the pixels of 720p. On a discrete GPU or Apple Silicon this is
