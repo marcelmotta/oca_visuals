@@ -120,33 +120,24 @@ void main() {
     // rotation speed (u_time * 0.03) is the "bloom speed" and stays
     // unchanged.
     //
-    // IMPORTANT FIX: previously "increase frequency" was implemented by
-    // zooming the Julia set's input coordinates OUT further and further
-    // (larger multiplier). That's backwards for this kind of fractal —
-    // points far from the origin escape almost immediately, so a large
-    // multiplier actually SHRINKS the area with any visible detail down
-    // to a small patch near the screen center, with everywhere else
-    // reading as flat/empty regardless of the reveal mask. That's why
-    // it looked like it was blooming from the center no matter what the
-    // mask did — the mask was correct, but there was nothing to reveal
-    // outside the center.
-    //
-    // Fixed by TILING the fractal into a repeating grid instead (using
-    // fract() to repeat a small, detailed view of the set many times
-    // across the frame) — this is what actually increases how often
-    // the pattern appears across the screen, while keeping each tile
-    // zoomed in enough to show real detail.
+    // NOT tiled — a single, connected fractal reads as one entity rather
+    // than repeated copies. Scale chosen (verified numerically) so real
+    // detail exists broadly across edges/corners/center rather than
+    // only in a tiny central patch (a larger scale here makes points
+    // escape almost immediately outside the center, which is the bug
+    // from the last version).
     vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));
-    const float TILE_COUNT = 4.0;
-    vec2 tile_uv = fract(uv * (TILE_COUNT * 0.5)) - 0.5;
-    float f = julia(tile_uv * 2.4, julia_c);
+    float f = julia(uv * 1.1, julia_c);
     vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
 
     // Reveal wave sweeps from the screen edges inward toward the
-    // center, in a much faster repeating cycle than before (was ~20s,
-    // now ~6s) so it reads as a recurring bloom rather than a rare event.
+    // center in a repeating cycle — since the fractal itself now has
+    // real structure reaching toward the edges (not just the center),
+    // this actually reveals the fractal's own connected shape blooming
+    // inward, the way a real fractal zoom feels, rather than an opacity
+    // mask over a mostly-empty field.
     float dist = length(uv);                     // 0 at center, ~1.41 at corners
-    float bloom_phase = fract(u_time * 0.16);     // faster repeating cycle (~6.3s)
+    float bloom_phase = fract(u_time * 0.16);     // repeating cycle (~6.3s)
     float wave_pos = mix(1.6, -0.5, bloom_phase); // starts past the edges, sweeps inward
     float bloom_mask = smoothstep(wave_pos - 0.45, wave_pos, dist);
     color += fractal_color * bloom_mask * 0.65;

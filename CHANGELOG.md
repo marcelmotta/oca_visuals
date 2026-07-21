@@ -12,6 +12,29 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v9 — 2026-07-21 — Fractal is one connected entity (not tiled), real window-resize handling
+
+- **Scenes 4 & 5 — removed the fractal tiling.** The v8 fix solved the
+  "only visible near center" bug but did so by repeating small tiles,
+  which read as copy-pasted thumbnails rather than one fractal. Now a
+  single, non-tiled fractal at a scale verified numerically to spread
+  real detail across edges, corners, and center (not just the middle) —
+  so the edge-to-center reveal wave now blooms an actual connected
+  shape inward, the way a real fractal zoom feels, rather than either
+  a mostly-empty field (v7) or repeated copies (v8).
+- **Fixed a real window-resize bug.** The app had no framebuffer-resize
+  handling at all — if the window changed size any way other than our
+  own startup fullscreen path (dragging an edge, the OS's native
+  maximize/fullscreen button, an external display change), rendering
+  stayed pinned to whatever size it started at, and the OS just
+  stretched those old pixels to fit — which is exactly what "stuck at
+  the original aspect ratio" looks like. Added a proper
+  framebuffer-size callback that keeps the GL viewport and the scene
+  manager's internal buffers (and anything reading `target.size`, like
+  the logo scenes' aspect ratio) in sync with the actual current size
+  at all times, plus a per-frame viewport safeguard against moderngl's
+  own framebuffer-switching resetting it mid-frame.
+
 ## v8 — 2026-07-21 — Fixed the actual fractal bug, calmer pulse, visible glitch
 
 - **Scenes 4 & 5 — found and fixed the real fractal bug.** Every prior

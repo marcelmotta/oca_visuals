@@ -69,6 +69,7 @@ def main():
     ctx = moderngl.create_context()
 
     fb_width, fb_height = glfw.get_framebuffer_size(window)
+    ctx.viewport = (0, 0, fb_width, fb_height)
 
     scene_manager = SceneManager(ctx, fb_width, fb_height)
     camera = Camera()
@@ -89,6 +90,23 @@ def main():
 
     glfw.set_key_callback(window, key_callback)
 
+    # IMPORTANT: without this, if the window changes size any way OTHER
+    # than our own startup fullscreen path — dragging an edge, using the
+    # OS's native maximize/fullscreen button, an external display change
+    # — the app keeps rendering at whatever size it started at, and
+    # GLFW/the OS just stretches those old pixels to fit the new window
+    # bounds. That's exactly what "stuck at the original aspect ratio"
+    # looks like. This callback keeps the GL viewport and the scene
+    # manager's internal buffers (and therefore anything reading
+    # target.size, like the logo scenes' aspect ratio) in sync with
+    # whatever the actual current size is, at all times.
+    def framebuffer_size_callback(_window, width, height):
+        if width > 0 and height > 0:
+            ctx.viewport = (0, 0, width, height)
+            scene_manager.resize(width, height)
+
+    glfw.set_framebuffer_size_callback(window, framebuffer_size_callback)
+
     last_time = time.perf_counter()
     print("Running. Press ESC to quit, or 1/2/3/4/5 to switch scenes manually.")
 
@@ -107,6 +125,11 @@ def main():
         camera.update(dt, midi_state)
 
         ctx.screen.use()
+        # Re-assert the viewport every frame: binding other framebuffers
+        # during a scene's render (trail buffers, crossfade targets,
+        # etc.) can change moderngl's tracked viewport, so we make sure
+        # it's correct again right before drawing to the actual screen.
+        ctx.viewport = (0, 0, *glfw.get_framebuffer_size(window))
         ctx.clear(0.0, 0.0, 0.0, 1.0)
         scene_manager.update_and_render(dt, midi_state, camera, ctx.screen)
 

@@ -88,6 +88,23 @@ class SceneManager:
         tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
         return self.ctx.framebuffer(color_attachments=[tex])
 
+    def resize(self, width, height):
+        """Recreates the crossfade buffers at a new size.
+
+        Called whenever the actual window/framebuffer size changes —
+        entering/leaving fullscreen, dragging a window edge, or a
+        display change — so scenes always render at (and scenes that
+        read `target.size`, like the logo scenes' aspect ratio, always
+        see) the ACTUAL current output size rather than whatever size
+        the app happened to start at.
+        """
+        if width <= 0 or height <= 0 or (width == self.width and height == self.height):
+            return
+        self.width = width
+        self.height = height
+        self.fbo_current = self._make_fbo()
+        self.fbo_next = self._make_fbo()
+
     def handle_program_change(self, program_number):
         """Looks up the requested scene and starts a crossfade to it."""
         target_name = SCENE_PROGRAM_MAP.get(program_number)
