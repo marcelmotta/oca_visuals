@@ -28,7 +28,7 @@ can be set to transmit on a different MIDI channel in its MIDI settings.
 """
 
 import mido
-from config import CC_MAP, MIDI_PORT_NAME, CHANNEL_ROLES
+from config import CC_MAP, MIDI_PORT_NAME, CHANNEL_ROLES, MIDI_DEBUG
 
 NUM_CHANNELS = 16
 
@@ -161,6 +161,10 @@ def poll_midi(port, state: MidiState):
 
     for msg in port.iter_pending():
         ch = getattr(msg, "channel", None)  # 0-15, or None for sysex/etc.
+
+        if MIDI_DEBUG:
+            ch_display = ch + 1 if ch is not None else "-"  # show as 1-16, matching gear displays
+            print(f"[MIDI] type={msg.type} channel={ch_display} {msg}")
 
         if msg.type == "control_change":
             if msg.control in CC_MAP:

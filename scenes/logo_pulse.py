@@ -134,40 +134,46 @@ void main() {
     vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
     color += fractal_color * 0.65;
 
-    // Translucent, glowing braid across the horizon: three strands
-    // weaving slowly, each a sine curve offset in phase (so they cross
-    // like a braid) PLUS a noise-driven wobble so the path is erratic
-    // rather than a perfectly smooth periodic wave, plus a gentle
-    // flicker in a contrasting color that randomly brightens small
-    // stretches of the strands over time (like light catching a moving
-    // thread). Thinner than before (higher falloff exponent).
+    // Translucent, glowing braid across the horizon: three THICK, soft
+    // "pipe" strands on a smooth, slow, purely sinusoidal path (restored
+    // to their original thickness/trajectory — the erratic wobble and
+    // thinness from the last version belonged to the sliver below, not
+    // the pipe itself). Inside each pipe, a much THINNER, brighter
+    // sliver of contrasting color wanders erratically and travels along
+    // the strand over time, like colored light flowing through a
+    // transparent tube.
     vec3 braid_color = hsv2rgb(vec3(fract(u_hue + 0.55), 0.45, 1.0));
-    vec3 flicker_color = hsv2rgb(vec3(fract(u_hue + 0.05), 0.85, 1.0));
+    vec3 sliver_color = hsv2rgb(vec3(fract(u_hue + 0.05), 0.85, 1.0));
     float braid = 0.0;
-    float flicker_glow = 0.0;
+    float sliver_glow = 0.0;
     for (int i = 0; i < 3; i++) {
         float phase = float(i) * 2.094395; // 2*pi/3 apart
-        float wobble = noise(vec2(cam_uv.x * 3.5 + float(i) * 11.0, u_time * 0.35 + phase))
-            + 0.5 * noise(vec2(cam_uv.x * 9.0 - float(i) * 5.0, u_time * 0.6));
+
+        // The pipe itself: smooth sine path only, original thickness.
         float strand_y = -0.05
             + 0.07 * sin(cam_uv.x * 2.6 + u_time * 0.12 + phase)
-            + 0.025 * sin(cam_uv.x * 6.3 - u_time * 0.07 + phase * 1.7)
-            + 0.05 * (wobble - 0.75); // erratic wobble, centered around 0
+            + 0.025 * sin(cam_uv.x * 6.3 - u_time * 0.07 + phase * 1.7);
         float d = abs(cam_uv.y - strand_y);
-        float strand_glow = exp(-d * d * 900.0); // much thinner than before (was 260.0)
-        braid += strand_glow;
+        float pipe_glow = exp(-d * d * 260.0); // restored original thickness
+        braid += pipe_glow;
 
-        // Gentle flicker: a slow-changing per-strand random value picks
-        // out small patches along x that briefly brighten in a
-        // contrasting color. Changes a few times a second, not every
-        // frame, so it reads as a soft flicker rather than noise.
-        float cell = floor(cam_uv.x * 4.0 + float(i) * 7.0 + u_time * 1.5);
-        float flick = hash(vec2(cell, float(i) * 3.1));
-        float flicker_strength = smoothstep(0.82, 1.0, flick);
-        flicker_glow += strand_glow * flicker_strength;
+        // The sliver: wanders erratically inside the pipe's cross
+        // section (small offset from strand_y, driven by noise rather
+        // than the pipe's own smooth path), rendered much thinner, and
+        // its brightness travels along x over time so it reads as light
+        // flowing through the tube rather than a fixed mark.
+        float wobble = noise(vec2(cam_uv.x * 3.5 + float(i) * 11.0, u_time * 0.35 + phase))
+            + 0.5 * noise(vec2(cam_uv.x * 9.0 - float(i) * 5.0, u_time * 0.6));
+        float sliver_y = strand_y + 0.035 * (wobble - 0.75);
+        float sd = abs(cam_uv.y - sliver_y);
+        float sliver_shape = exp(-sd * sd * 2200.0); // thin sliver, well inside the pipe's width
+
+        float travel = smoothstep(0.3, 1.0,
+            sin(cam_uv.x * 4.0 - u_time * (1.2 + float(i) * 0.3) + phase));
+        sliver_glow += sliver_shape * travel;
     }
     color += braid_color * braid * 0.45;
-    color += flicker_color * flicker_glow * 0.5;
+    color += sliver_color * sliver_glow * 0.55;
 
     f_color = vec4(color, 1.0);
 }

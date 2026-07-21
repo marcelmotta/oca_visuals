@@ -30,6 +30,15 @@ TARGET_FPS = 60
 # startup and you can paste the exact name here once you know it).
 MIDI_PORT_NAME = None  # e.g. "IAC Driver Bus 1" (Ableton) or "SEQTRAK"
 
+# Set to True to print every incoming MIDI message (type, channel, note
+# /control, value) to the terminal. Useful for confirming that your gear
+# is actually sending what you expect on the channels you expect — e.g.
+# if a channel-triggered effect "isn't working," turn this on, hit the
+# pad in question, and check the printed channel number matches what
+# CHANNEL_ROLES expects. Leave off during a show (it's noisy and adds
+# print overhead).
+MIDI_DEBUG = False
+
 # --- CC mappings -------------------------------------------------------
 # Maps a MIDI CC number -> a named control that scenes read from.
 # CC 1 is the standard mod wheel; CC 74 is a common filter-cutoff CC on

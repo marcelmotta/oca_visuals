@@ -144,7 +144,19 @@ don't lose the newer versions still sitting on `main`.
 Going forward, each round of changes will be committed and tagged
 (v2, v3, ...) with a matching entry added to `CHANGELOG.md`.
 
-## 7. Known limitations / next steps
+## 7. Debugging MIDI
+
+If a channel-triggered effect doesn't seem to respond, set
+`MIDI_DEBUG = True` in `config.py`, run the app, and hit the pad/key in
+question — the terminal will print every incoming message's type,
+channel (shown as 1-16, matching how gear displays it), and note/CC
+value. Compare that channel number against `CHANNEL_ROLES` in
+`config.py`. This is the fastest way to confirm whether your
+gear/DAW routing is actually sending what a scene expects — e.g. some
+grooveboxes/DAW setups need a specific mode enabled to send separate
+channels per part rather than everything on one channel.
+
+## 8. Known limitations / next steps
 
 - Currently outputs to a single window (as agreed) — extending to
   multiple screens/projector output later means opening additional GLFW

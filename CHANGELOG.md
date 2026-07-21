@@ -12,6 +12,25 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v6 — 2026-07-21 — Braid restored + thin flowing sliver, MIDI debug tool
+
+- **Scenes 4 & 5 — braid separated into two distinct elements.** The
+  previous version had conflated "make the streak thin/erratic" into
+  the braid's own shape, making the whole pipe thin. Restored: the
+  braid "pipe" itself is back to its original thickness and smooth
+  sine-only path; a NEW, separate thin sliver of contrasting color now
+  wanders erratically and travels along the strand, flowing inside the
+  pipe's width — like colored light moving through a transparent tube,
+  rather than the tube itself being thin.
+- **MIDI debug tool.** Added `MIDI_DEBUG` in `config.py` — when set to
+  `True`, every incoming MIDI message is printed to the terminal
+  (type, channel as 1-16, note/CC value), to help confirm whether
+  gear/DAW routing is actually sending distinct channels per part.
+  Added after repeated reports that the percussion-triggered particle
+  burst "isn't working" despite the trigger logic checking out
+  end-to-end in code review — this is the fastest way to see what's
+  actually arriving at the channel level.
+
 ## v5 — 2026-07-21 — Split drums/percussion mapping, letter effect reworked as gentle particles
 
 - **New MIDI mapping split.** "Mapping 1" (the `drums` role) now covers
