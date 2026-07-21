@@ -1,0 +1,105 @@
+"""
+main.py
+-------
+Run this file to start the show:
+
+    python main.py
+
+It opens one window (single-screen output for now, as agreed), reads
+live MIDI from Ableton Live and/or the SEQTRAK, and renders whichever
+scene is currently active — crossfading smoothly whenever a MIDI
+program-change message asks for a different one.
+
+CONTROLS WHILE RUNNING:
+- Press ESC or close the window to quit.
+- Press number keys 1/2/3 to manually switch scenes for testing, even
+  with no MIDI device connected yet.
+"""
+
+import time
+import glfw
+import moderngl
+
+from config import (
+    WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, FULLSCREEN, TARGET_FPS,
+)
+from midi_input import MidiState, open_midi_port, poll_midi
+from scene_manager import SceneManager
+from camera import Camera
+
+
+def create_window():
+    if not glfw.init():
+        raise RuntimeError("Could not initialize GLFW")
+
+    glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
+    glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
+    glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+    glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
+
+    monitor = glfw.get_primary_monitor() if FULLSCREEN else None
+    window = glfw.create_window(
+        WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, monitor, None
+    )
+    if not window:
+        glfw.terminate()
+        raise RuntimeError("Could not create GLFW window")
+
+    glfw.make_context_current(window)
+    glfw.swap_interval(1)  # vsync on, keeps us near TARGET_FPS without spinning
+    return window
+
+
+def main():
+    window = create_window()
+    ctx = moderngl.create_context()
+
+    fb_width, fb_height = glfw.get_framebuffer_size(window)
+
+    scene_manager = SceneManager(ctx, fb_width, fb_height)
+    camera = Camera()
+
+    midi_state = MidiState()
+    midi_port = open_midi_port(midi_state)
+
+    # Manual scene-switch keys for testing without a MIDI controller.
+    key_to_program = {glfw.KEY_1: 0, glfw.KEY_2: 1, glfw.KEY_3: 2, glfw.KEY_4: 3, glfw.KEY_5: 4}
+
+    def key_callback(_window, key, _scancode, action, _mods):
+        if action != glfw.PRESS:
+            return
+        if key == glfw.KEY_ESCAPE:
+            glfw.set_window_should_close(window, True)
+        elif key in key_to_program:
+            scene_manager.handle_program_change(key_to_program[key])
+
+    glfw.set_key_callback(window, key_callback)
+
+    last_time = time.perf_counter()
+    print("Running. Press ESC to quit, or 1/2/3/4/5 to switch scenes manually.")
+
+    while not glfw.window_should_close(window):
+        glfw.poll_events()
+
+        now = time.perf_counter()
+        dt = now - last_time
+        last_time = now
+        # Clamp dt so a debugger breakpoint or hiccup doesn't cause a huge
+        # simulation jump (e.g. a particle burst teleporting off-screen).
+        dt = min(dt, 1.0 / 15.0)
+
+        midi_state.begin_frame()
+        poll_midi(midi_port, midi_state)
+        camera.update(dt, midi_state)
+
+        ctx.screen.use()
+        ctx.clear(0.0, 0.0, 0.0, 1.0)
+        scene_manager.update_and_render(dt, midi_state, camera, ctx.screen)
+
+        glfw.swap_buffers(window)
+
+    glfw.terminate()
+
+
+if __name__ == "__main__":
+    main()
