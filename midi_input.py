@@ -25,12 +25,27 @@ can be set to transmit on a different MIDI channel in its MIDI settings.
 `config.CHANNEL_ROLES` maps a human-readable role name ("drums", "bass",
 ...) to a channel number, so scene code can say
 `midi.role_triggers("drums")` instead of remembering magic numbers.
+
+MIDI CLOCK
+----------
+Separately from notes/CC/channels, this also tracks MIDI Clock — the
+standard real-time sync signal (24 pulses per quarter note) that
+Ableton and most sequencers/grooveboxes can transmit. This is NOT sent
+by default — you need to explicitly enable clock/sync output on the
+relevant port (in Ableton: Preferences > Link/Tempo/MIDI > turn on
+"Sync" output for the port; on hardware, look for a "MIDI clock out" or
+"sync out" setting). `MidiState.triplet_tick_pending` fires once every
+8 clock pulses (24/3 — a musical triplet subdivision of the beat),
+which scenes can use to time sequential per-step animations to the
+actual tempo rather than a hardcoded speed.
 """
 
 import mido
 from config import CC_MAP, MIDI_PORT_NAME, CHANNEL_ROLES, MIDI_DEBUG
 
 NUM_CHANNELS = 16
+CLOCK_PULSES_PER_QUARTER_NOTE = 24
+CLOCK_PULSES_PER_TRIPLET = CLOCK_PULSES_PER_QUARTER_NOTE // 3  # = 8
 
 
 class MidiState:
@@ -61,10 +76,14 @@ class MidiState:
         self.channel_note_triggers = {ch: set() for ch in range(NUM_CHANNELS)}
         self.channel_active_notes = {ch: set() for ch in range(NUM_CHANNELS)}
 
+        self.clock_pulse_count = 0
+        self.triplet_tick_pending = False
+
     def begin_frame(self):
         """Call once per frame BEFORE polling MIDI, to clear one-shot events."""
         self.note_triggers = set()
         self.program_change = None
+        self.triplet_tick_pending = False
         for ch in range(NUM_CHANNELS):
             self.channel_note_triggers[ch] = set()
 
@@ -162,11 +181,16 @@ def poll_midi(port, state: MidiState):
     for msg in port.iter_pending():
         ch = getattr(msg, "channel", None)  # 0-15, or None for sysex/etc.
 
-        if MIDI_DEBUG:
+        if MIDI_DEBUG and msg.type != "clock":
             ch_display = ch + 1 if ch is not None else "-"  # show as 1-16, matching gear displays
             print(f"[MIDI] type={msg.type} channel={ch_display} {msg}")
 
-        if msg.type == "control_change":
+        if msg.type == "clock":
+            state.clock_pulse_count += 1
+            if state.clock_pulse_count % CLOCK_PULSES_PER_TRIPLET == 0:
+                state.triplet_tick_pending = True
+
+        elif msg.type == "control_change":
             if msg.control in CC_MAP:
                 name = CC_MAP[msg.control]
                 value = msg.value / 127.0

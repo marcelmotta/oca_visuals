@@ -12,6 +12,34 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v17 — 2026-07-21 — Recovery: v12-v15 work restored after silent data loss
+
+**What happened:** while implementing the v16 cursor fix, discovered
+that all code changes from v12 through v15 had silently disappeared
+from the project files — the container's working state had reverted to
+v11 at some point without any visible error, and everything reported
+as "done" in those four rounds never actually persisted. Git history
+confirms this: v16 was built directly on top of the v11 commit.
+
+**What this version restores** (rebuilt from scratch to match what
+v12-v15 were meant to contain):
+- MIDI Clock support in `midi_input.py` (`triplet_tick_pending`, fired
+  every 8 pulses / a musical triplet)
+- The dual randomized bloom-cell fractal system in `logo_pulse.py` and
+  `logo_video_pulse.py` (varied origins, staggered/overlapping timing,
+  area-uniform reveal metric)
+- Full rebuild of `kaleidoscope_video.py`: the video-texture-aspect fix,
+  the synth2-gated psychedelic asanoha background layer, and the
+  always-lit glyph-based "温泉" ring with the MIDI-clock-driven pop
+  chase
+- Regenerated `assets/onsen1.png` / `assets/onsen2.png`
+
+Re-verified numerically after rebuilding: the dual bloom cells still
+never drop combined brightness below ~50-60%, and the fractal
+detail-distribution and glyph-ring math all check out the same as
+originally validated. Everything from v1-v11 and the v16 cursor fix
+was confirmed still intact and unaffected throughout this.
+
 ## v16 — 2026-07-21 — Auto-hiding mouse cursor
 
 - **Mouse cursor now auto-hides after ~2 seconds of no movement**

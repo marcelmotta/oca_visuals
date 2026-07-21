@@ -128,6 +128,21 @@ class LogoVideoPulseScene(Scene):
         self.glitch_active_until = 0.0
         self.glitch_seed = 0.0
 
+        # Fractal bloom is MIDI-triggered in this scene (channel 10 /
+        # "pads"), unlike scene 4 where it cycles automatically. Two
+        # cells: when a new pad trigger arrives, the current bloom
+        # shifts into the "previous" cell (which keeps fading out on its
+        # own) while a fresh one starts fading in — so consecutive
+        # triggers blend smoothly into each other instead of the older
+        # one cutting off abruptly. Both start far in the past so
+        # nothing shows until the first real trigger.
+        self.bloom_trigger_duration = 7.0
+        self.bloom_cell_start = [-9999.0, -9999.0]
+        self.bloom_cell_origin = [self._random_bloom_origin(), self._random_bloom_origin()]
+
+    def _random_bloom_origin(self):
+        return (float(np.random.uniform(-0.55, 0.55)), float(np.random.uniform(-0.45, 0.45)))
+
     def _prepare_frame(self, frame_bgr):
         """Resizes a decoded BGR frame and converts it to RGBA bytes."""
         if (frame_bgr.shape[1], frame_bgr.shape[0]) != (self.frame_w, self.frame_h):
@@ -162,6 +177,17 @@ class LogoVideoPulseScene(Scene):
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
         self.intensity = 0.3 + midi.role_cc("bass", "intensity", 0.0) * 1.5
+
+        if midi.role_triggers("pads"):
+            self.bloom_cell_start[1] = self.bloom_cell_start[0]
+            self.bloom_cell_origin[1] = self.bloom_cell_origin[0]
+            self.bloom_cell_start[0] = self.time
+            self.bloom_cell_origin[0] = self._random_bloom_origin()
+
+        self.bloom_cell_phase = [
+            min((self.time - start) / self.bloom_trigger_duration, 1.0)
+            for start in self.bloom_cell_start
+        ]
 
         if self.time >= self.next_glitch_time and self.time >= self.glitch_active_until:
             duration = np.random.uniform(0.18, 0.4)
@@ -217,6 +243,8 @@ class LogoVideoPulseScene(Scene):
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
         self.bg_program["u_intensity"] = self.intensity
+        self.bg_program["u_bloom_origin"] = self.bloom_cell_origin
+        self.bg_program["u_bloom_phase"] = self.bloom_cell_phase
         self.bg_program["u_aspect"] = target.size[0] / target.size[1]
         self.bg_vao.render(moderngl.TRIANGLES)
 

@@ -66,6 +66,8 @@ uniform float u_time;
 uniform float u_hue;
 uniform float u_intensity;
 uniform float u_aspect;
+uniform vec2 u_bloom_origin[2];
+uniform float u_bloom_phase[2];
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -135,18 +137,27 @@ void main() {
     float f = julia(uv * 1.1, julia_c);
     vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
 
-    // Reveal wave sweeps from the screen edges inward toward the
-    // center and back out again, continuously — a TRIANGLE wave
-    // (smooth ramp up, smooth ramp down) rather than the previous
-    // sawtooth (smooth ramp up, then an instant snap back to empty at
-    // the end of each cycle, which is what caused the "fades suddenly"
-    // problem). Also much longer overall (was ~6.3s round trip, now
-    // ~20s), so there's real time to see it fully bloom before it
-    // recedes again.
-    float bloom_cycle = 1.0 - abs(2.0 * fract(u_time * 0.05) - 1.0); // 0->1->0, continuous, ~20s period
-    float wave_pos = mix(1.6, -0.5, bloom_cycle);
-    float dist = length(uv);                     // 0 at center, ~1.41 at corners
-    float bloom_mask = smoothstep(wave_pos - 0.6, wave_pos, dist); // slightly wider band for extra softness
+    // Reveal wave: TWO overlapping "bloom cells" (not one fixed to
+    // screen center) — Python assigns each a randomized origin and its
+    // own timing, so consecutive blooms vary in position instead of
+    // always sweeping from the same spot, and by staggering the two
+    // cells' timing, one is always fading in while the other fades out
+    // rather than the whole effect dropping to nothing between cycles.
+    //
+    // Uses dist-SQUARED (not raw distance) against the wave threshold:
+    // screen area grows with r^2, so sweeping raw distance linearly
+    // reveals area at a very uneven rate; comparing against r^2 instead
+    // makes the reveal advance at a more constant area rate, which
+    // reads as a smoother, less sudden transition.
+    float bloom_mask = 0.0;
+    for (int i = 0; i < 2; i++) {
+        float cycle = 1.0 - abs(2.0 * u_bloom_phase[i] - 1.0); // 0->1->0 triangle
+        vec2 rel = uv - u_bloom_origin[i];
+        float dist_sq = dot(rel, rel);
+        float wave_pos = mix(2.3, -0.3, cycle);
+        float mask = smoothstep(wave_pos - 0.9, wave_pos, dist_sq);
+        bloom_mask = max(bloom_mask, mask);
+    }
     color += fractal_color * bloom_mask * 0.65;
 
     // Translucent, glowing braid across the horizon: three THICK, soft
@@ -373,6 +384,17 @@ class LogoPulseScene(Scene):
         self.glitch_active_until = 0.0
         self.glitch_seed = 0.0
 
+        # Two auto-cycling fractal bloom cells (see BG_FRAGMENT comments):
+        # staggered by half the cycle length so one is always fading in
+        # while the other fades out, and each gets a fresh random origin
+        # whenever its own cycle wraps around.
+        self.bloom_cycle_length = 20.0
+        self.bloom_cell_start = [0.0, -self.bloom_cycle_length * 0.5]
+        self.bloom_cell_origin = [self._random_bloom_origin(), self._random_bloom_origin()]
+
+    def _random_bloom_origin(self):
+        return (float(np.random.uniform(-0.55, 0.55)), float(np.random.uniform(-0.45, 0.45)))
+
     def update(self, dt, midi, camera):
         self.time += dt
         self.camera = camera
@@ -390,6 +412,15 @@ class LogoPulseScene(Scene):
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
         self.intensity = 0.3 + midi.role_cc("bass", "intensity", 0.0) * 1.5
+
+        self.bloom_cell_phase = []
+        for i in range(2):
+            elapsed = self.time - self.bloom_cell_start[i]
+            if elapsed >= self.bloom_cycle_length:
+                self.bloom_cell_start[i] = self.time
+                self.bloom_cell_origin[i] = self._random_bloom_origin()
+                elapsed = 0.0
+            self.bloom_cell_phase.append(elapsed / self.bloom_cycle_length)
 
         # Random, infrequent, brief glitch: once the scheduled time
         # arrives, activate it for a short random duration, then
@@ -460,6 +491,8 @@ class LogoPulseScene(Scene):
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
         self.bg_program["u_intensity"] = self.intensity
+        self.bg_program["u_bloom_origin"] = self.bloom_cell_origin
+        self.bg_program["u_bloom_phase"] = self.bloom_cell_phase
         self.bg_program["u_aspect"] = target.size[0] / target.size[1]
         self.bg_vao.render(moderngl.TRIANGLES)
 
