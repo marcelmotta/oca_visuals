@@ -131,15 +131,17 @@ void main() {
     vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
 
     // Reveal wave sweeps from the screen edges inward toward the
-    // center in a repeating cycle — since the fractal itself now has
-    // real structure reaching toward the edges (not just the center),
-    // this actually reveals the fractal's own connected shape blooming
-    // inward, the way a real fractal zoom feels, rather than an opacity
-    // mask over a mostly-empty field.
+    // center and back out again, continuously — a TRIANGLE wave
+    // (smooth ramp up, smooth ramp down) rather than the previous
+    // sawtooth (smooth ramp up, then an instant snap back to empty at
+    // the end of each cycle, which is what caused the "fades suddenly"
+    // problem). Also much longer overall (was ~6.3s round trip, now
+    // ~20s), so there's real time to see it fully bloom before it
+    // recedes again.
+    float bloom_cycle = 1.0 - abs(2.0 * fract(u_time * 0.05) - 1.0); // 0->1->0, continuous, ~20s period
+    float wave_pos = mix(1.6, -0.5, bloom_cycle);
     float dist = length(uv);                     // 0 at center, ~1.41 at corners
-    float bloom_phase = fract(u_time * 0.16);     // repeating cycle (~6.3s)
-    float wave_pos = mix(1.6, -0.5, bloom_phase); // starts past the edges, sweeps inward
-    float bloom_mask = smoothstep(wave_pos - 0.45, wave_pos, dist);
+    float bloom_mask = smoothstep(wave_pos - 0.6, wave_pos, dist); // slightly wider band for extra softness
     color += fractal_color * bloom_mask * 0.65;
 
     // Translucent, glowing braid across the horizon: three THICK, soft

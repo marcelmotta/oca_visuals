@@ -12,6 +12,20 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v10 — 2026-07-21 — Fractal bloom: smooth in/out, much longer cycle
+
+- **Scenes 4 & 5 — fixed the actual cause of "fades suddenly."** The
+  reveal wave used `fract(time)`, a sawtooth: it ramped up smoothly but
+  then snapped back to empty instantly at the end of every cycle.
+  Verified numerically (sampled the center-screen mask across a cycle):
+  it held at full brightness then dropped to zero within ~0.25s out of
+  a 6.3s cycle — a highly asymmetric slow-rise/instant-fall shape,
+  which reads exactly as "fades suddenly." Replaced with a continuous
+  triangle wave (smooth ramp up, smooth ramp down, no jump at the
+  wrap point) and roughly tripled the period (was ~6.3s round trip,
+  now ~20s), so there's real time for it to fully bloom before it
+  recedes again, and the recede itself is now gradual.
+
 ## v9 — 2026-07-21 — Fractal is one connected entity (not tiled), real window-resize handling
 
 - **Scenes 4 & 5 — removed the fractal tiling.** The v8 fix solved the
