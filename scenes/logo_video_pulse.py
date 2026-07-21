@@ -164,10 +164,10 @@ class LogoVideoPulseScene(Scene):
         self.intensity = 0.3 + midi.role_cc("bass", "intensity", 0.0) * 1.5
 
         if self.time >= self.next_glitch_time and self.time >= self.glitch_active_until:
-            duration = np.random.uniform(0.05, 0.15)
+            duration = np.random.uniform(0.18, 0.4)
             self.glitch_active_until = self.time + duration
             self.glitch_seed = np.random.uniform(0.0, 1000.0)
-            self.next_glitch_time = self.glitch_active_until + np.random.uniform(10.0, 25.0)
+            self.next_glitch_time = self.glitch_active_until + np.random.uniform(8.0, 18.0)
 
         if triggered:
             origin = (np.random.uniform(-0.8, 0.8), np.random.uniform(-0.6, 0.6))
@@ -188,9 +188,11 @@ class LogoVideoPulseScene(Scene):
         # screen, and the background pass needs the resulting pulse data.
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
-        yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.55
+        # Punch-driven "pulse" on hits reduced substantially (was 0.55
+        # /0.35) — should read as a small, discrete nudge, not a big lurch.
+        yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.12
         pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
-        roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.35
+        roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.08
 
         aspect = target.size[0] / target.size[1]
         proj = _perspective_matrix(self.fov, aspect, 0.1, 10.0)

@@ -12,6 +12,32 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v8 — 2026-07-21 — Fixed the actual fractal bug, calmer pulse, visible glitch
+
+- **Scenes 4 & 5 — found and fixed the real fractal bug.** Every prior
+  "increase frequency" request was implemented by zooming the Julia
+  set's input coordinates further OUT — but for this kind of fractal,
+  points far from the origin escape almost immediately, so a larger
+  multiplier actually SHRINKS the area with any visible detail down to
+  a small patch near the screen center, with everywhere else reading
+  as flat/empty. That's why it looked like it bloomed from the center
+  regardless of the reveal-wave mask — there was nothing outside the
+  center for the mask to reveal. Verified numerically: the old approach
+  had visible detail in only 1 of 9 screen regions; the fix (tiling the
+  fractal into a repeating grid instead of zooming out) spreads it
+  evenly across all 9. Also sped up the reveal-wave cycle substantially
+  (was ~20s, now ~6.3s).
+- **Scenes 4 & 5 — logo pulse toned down.** The drum-punch contribution
+  to the logo's yaw/roll tilt cut roughly 4-5x (was 0.55/0.35, now
+  0.12/0.08) — should read as a small, discrete nudge per hit rather
+  than a big lurch.
+- **Scenes 4 & 5 — glitch made much more noticeable.** Switched from
+  uniform tiny jitter on every band to a sparser-but-much-stronger tear
+  (only some horizontal bands shift, and when they do it's a real
+  displacement), tripled the chromatic split, and roughly tripled the
+  duration (was 0.05-0.15s, now 0.18-0.4s) so there's actually time to
+  perceive it.
+
 ## v7 — 2026-07-21 — Camera decoupled from background, edge-to-center fractal bloom, logo glitch, fullscreen native resolution
 
 - **Scenes 4 & 5 — braid confirmed final, kept as-is** (thick pipe +

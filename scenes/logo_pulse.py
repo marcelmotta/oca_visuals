@@ -118,16 +118,35 @@ void main() {
     // and a sense of depth beneath the noise wash. `c` drifts slowly
     // around a small circle so the pattern continuously morphs — that
     // rotation speed (u_time * 0.03) is the "bloom speed" and stays
-    // unchanged; spatial scale increased further again (more repeats
-    // across the frame). It also now blooms in cyclically from the
-    // edges toward the center: a wave threshold sweeps inward across
-    // `dist` (distance from screen center) so edges reveal first.
+    // unchanged.
+    //
+    // IMPORTANT FIX: previously "increase frequency" was implemented by
+    // zooming the Julia set's input coordinates OUT further and further
+    // (larger multiplier). That's backwards for this kind of fractal —
+    // points far from the origin escape almost immediately, so a large
+    // multiplier actually SHRINKS the area with any visible detail down
+    // to a small patch near the screen center, with everywhere else
+    // reading as flat/empty regardless of the reveal mask. That's why
+    // it looked like it was blooming from the center no matter what the
+    // mask did — the mask was correct, but there was nothing to reveal
+    // outside the center.
+    //
+    // Fixed by TILING the fractal into a repeating grid instead (using
+    // fract() to repeat a small, detailed view of the set many times
+    // across the frame) — this is what actually increases how often
+    // the pattern appears across the screen, while keeping each tile
+    // zoomed in enough to show real detail.
     vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));
-    float f = julia(uv * 3.6, julia_c);
+    const float TILE_COUNT = 4.0;
+    vec2 tile_uv = fract(uv * (TILE_COUNT * 0.5)) - 0.5;
+    float f = julia(tile_uv * 2.4, julia_c);
     vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
 
-    float dist = length(uv);                    // 0 at center, ~1.41 at corners
-    float bloom_phase = fract(u_time * 0.05);    // slow repeating cycle (~20s)
+    // Reveal wave sweeps from the screen edges inward toward the
+    // center, in a much faster repeating cycle than before (was ~20s,
+    // now ~6s) so it reads as a recurring bloom rather than a rare event.
+    float dist = length(uv);                     // 0 at center, ~1.41 at corners
+    float bloom_phase = fract(u_time * 0.16);     // faster repeating cycle (~6.3s)
     float wave_pos = mix(1.6, -0.5, bloom_phase); // starts past the edges, sweeps inward
     float bloom_mask = smoothstep(wave_pos - 0.45, wave_pos, dist);
     color += fractal_color * bloom_mask * 0.65;
@@ -206,18 +225,21 @@ float hash(vec2 p) {
 void main() {
     vec2 uv = v_uv;
 
-    // Subtle glitch: for the brief window it's active, a handful of
-    // horizontal bands get a small random horizontal offset (like a
-    // signal tear), and channels are sampled with a slight offset from
-    // each other (chromatic split) — kept small so it reads as a quick
-    // flicker/glitch rather than a dramatic effect.
+    // Glitch: for the brief window it's active, a SMALL NUMBER of
+    // horizontal bands get a strong horizontal tear (most bands are
+    // untouched — sparse-but-strong reads as a much clearer glitch than
+    // uniform tiny jitter on every band), plus a noticeable chromatic
+    // (RGB) split.
     vec3 tex_rgb;
     if (u_glitch_amount > 0.0) {
-        float band = floor(v_uv.y * 18.0);
-        float band_offset = (hash(vec2(band, u_glitch_seed)) - 0.5) * 0.05 * u_glitch_amount;
-        uv.x += band_offset;
+        float band = floor(v_uv.y * 14.0);
+        float band_rand = hash(vec2(band, u_glitch_seed));
+        // Only bands above this threshold tear at all; when they do,
+        // the offset is large enough to actually notice.
+        float tear = step(0.55, band_rand) * (band_rand - 0.5) * 2.0; // 0, or -1..1
+        uv.x += tear * 0.12 * u_glitch_amount;
 
-        float split = 0.006 * u_glitch_amount;
+        float split = 0.02 * u_glitch_amount;
         float r = texture(u_logo, vec2(uv.x + split, 1.0 - uv.y)).r;
         float g = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).g;
         float b = texture(u_logo, vec2(uv.x - split, 1.0 - uv.y)).b;
@@ -375,10 +397,10 @@ class LogoPulseScene(Scene):
         # arrives, activate it for a short random duration, then
         # schedule the next one further out.
         if self.time >= self.next_glitch_time and self.time >= self.glitch_active_until:
-            duration = np.random.uniform(0.05, 0.15)
+            duration = np.random.uniform(0.18, 0.4)
             self.glitch_active_until = self.time + duration
             self.glitch_seed = np.random.uniform(0.0, 1000.0)
-            self.next_glitch_time = self.glitch_active_until + np.random.uniform(10.0, 25.0)
+            self.next_glitch_time = self.glitch_active_until + np.random.uniform(8.0, 18.0)
 
         # Background pixel-cloud — unchanged from before.
         if triggered:
@@ -399,15 +421,16 @@ class LogoPulseScene(Scene):
         # burst spawn below needs it to know where each character
         # currently sits on screen.
         #
-        # More aggressive rotation on all three axes than before:
-        # yaw/pitch amplitudes roughly doubled, and a new Z-axis roll
-        # added (there was no roll at all previously). Drum punches now
-        # kick yaw AND roll harder for a snappier per-hit tilt.
+        # Continuous sway on all three axes (yaw/pitch/roll) for the
+        # ambient tilt; the punch-driven "pulse" on hits itself is kept
+        # deliberately small (see below) — a discrete nudge, not a lurch.
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
-        yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.55
+        # Punch-driven "pulse" on hits reduced substantially (was 0.55
+        # /0.35) — should read as a small, discrete nudge, not a big lurch.
+        yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.12
         pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
-        roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.35
+        roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.08
 
         aspect = target.size[0] / target.size[1]
         proj = _perspective_matrix(self.fov, aspect, 0.1, 10.0)
