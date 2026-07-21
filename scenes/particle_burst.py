@@ -24,7 +24,7 @@ import numpy as np
 import moderngl
 
 from scene_base import Scene
-from utils import make_fullscreen_quad_vao, hsv_to_rgb_np
+from utils import make_fullscreen_quad_vao, hsv_to_rgb_np, compute_work_size
 from config import TRIGGER_NOTE_LOW, TRIGGER_NOTE_HIGH
 
 MAX_PARTICLES = 36000
@@ -70,6 +70,7 @@ out vec3 v_color;
 uniform vec2 u_cam_offset;
 uniform float u_cam_zoom;
 uniform float u_cam_rot;
+uniform float u_aspect;
 
 void main() {
     v_life01 = in_life01;
@@ -88,6 +89,13 @@ void main() {
     p = mat2(ca, -sa, sa, ca) * p;
     p *= mix(1.0, u_cam_zoom, parallax);
     p -= u_cam_offset * parallax;
+
+    // Aspect correction, applied LAST (after the simulation/camera
+    // transform above, which assumes a symmetric x/y world and should
+    // stay that way): without this, the swirl and radial bursts — which
+    // move equally in x and y in world space — render as ellipses on
+    // any screen that isn't exactly square.
+    p.x /= u_aspect;
 
     gl_Position = vec4(p, 0.0, 1.0);
 
@@ -175,7 +183,11 @@ class ParticleBurstScene(Scene):
             [(self.vbo, "3f 1f 3f", "in_position", "in_life01", "in_color")],
         )
 
-        self.work_size = (1280, 720)
+        # Sized to match the ACTUAL output aspect ratio (capped for
+        # performance), not a hardcoded 16:9 — otherwise this buffer
+        # gets stretched non-uniformly the moment the real display
+        # isn't exactly 16:9, which squashes/distorts everything in it.
+        self.work_size = compute_work_size(self.output_width, self.output_height)
         self.fbo_a = self._make_fbo(ctx)
         self.fbo_b = self._make_fbo(ctx)
         self.reading_from_a = True
@@ -191,6 +203,14 @@ class ParticleBurstScene(Scene):
         fbo.use()
         ctx.clear(0.0, 0.0, 0.0, 1.0)
         return fbo
+
+    def resize(self, width, height):
+        super().resize(width, height)
+        new_work_size = compute_work_size(width, height)
+        if new_work_size != self.work_size:
+            self.work_size = new_work_size
+            self.fbo_a = self._make_fbo(self.ctx)
+            self.fbo_b = self._make_fbo(self.ctx)
 
     def _next_indices(self, n):
         idx = (np.arange(n) + self.cursor) % MAX_PARTICLES
@@ -355,6 +375,7 @@ class ParticleBurstScene(Scene):
         self.point_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
         self.point_program["u_cam_zoom"] = cam.zoom if cam else 1.0
         self.point_program["u_cam_rot"] = cam.rotation if cam else 0.0
+        self.point_program["u_aspect"] = self.work_size[0] / self.work_size[1]
         self.vao.render(moderngl.POINTS, vertices=MAX_PARTICLES)
         ctx.disable(moderngl.BLEND)
 

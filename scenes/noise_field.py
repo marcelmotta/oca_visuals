@@ -41,6 +41,7 @@ uniform float u_time;
 uniform float u_speed;
 uniform float u_hue;
 uniform float u_brightness;
+uniform float u_aspect;
 uniform vec2 u_pulse_pos[8];
 uniform float u_pulse_age[8];
 
@@ -82,6 +83,10 @@ vec2 applyCamera(vec2 uv, float parallax) {
 
 void main() {
     vec2 base_uv = v_uv * 2.0 - 1.0;
+    // Aspect correction: without this, anything meant to look round
+    // (noise blobs, ripples) appears stretched into an ellipse on any
+    // screen that isn't exactly square (i.e. virtually all of them).
+    base_uv.x *= u_aspect;
 
     // --- Background layer: slow, large-scale, low parallax ---
     vec2 bg_uv = applyCamera(base_uv, 0.35);
@@ -110,7 +115,8 @@ void main() {
     for (int i = 0; i < 8; i++) {
         float age = u_pulse_age[i];
         if (age < 4.0) {
-            float d = length(base_uv - u_pulse_pos[i]);
+            vec2 pulse_pos_corrected = vec2(u_pulse_pos[i].x * u_aspect, u_pulse_pos[i].y);
+            float d = length(base_uv - pulse_pos_corrected);
             float ring = smoothstep(0.10, 0.0, abs(d - age * 0.5));
             float envelope = 1.0 - smoothstep(0.0, 4.0, age);
             vec3 ring_color = hsv2rgb(vec3(fract(u_hue + 0.5), 0.6, 1.0));
@@ -161,6 +167,7 @@ class NoiseFieldScene(Scene):
         self.program["u_speed"] = self.speed
         self.program["u_hue"] = self.hue
         self.program["u_brightness"] = self.brightness
+        self.program["u_aspect"] = target.size[0] / target.size[1]
         self.program["u_pulse_pos"] = [tuple(p) for p in self.pulse_pos]
         self.program["u_pulse_age"] = [float(a) for a in self.pulse_age]
 

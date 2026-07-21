@@ -78,7 +78,8 @@ def main():
     midi_port = open_midi_port(midi_state)
 
     # Manual scene-switch keys for testing without a MIDI controller.
-    key_to_program = {glfw.KEY_1: 0, glfw.KEY_2: 1, glfw.KEY_3: 2, glfw.KEY_4: 3, glfw.KEY_5: 4}
+    key_to_program = {glfw.KEY_1: 0, glfw.KEY_2: 1, glfw.KEY_3: 2, glfw.KEY_4: 3,
+                       glfw.KEY_5: 4, glfw.KEY_6: 5}
 
     def key_callback(_window, key, _scancode, action, _mods):
         if action != glfw.PRESS:
@@ -108,7 +109,7 @@ def main():
     glfw.set_framebuffer_size_callback(window, framebuffer_size_callback)
 
     last_time = time.perf_counter()
-    print("Running. Press ESC to quit, or 1/2/3/4/5 to switch scenes manually.")
+    print("Running. Press ESC to quit, or 1/2/3/4/5/6 to switch scenes manually.")
 
     while not glfw.window_should_close(window):
         glfw.poll_events()

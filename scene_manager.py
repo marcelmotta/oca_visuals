@@ -23,6 +23,7 @@ from scenes.feedback_trails import FeedbackTrailsScene
 from scenes.noise_field import NoiseFieldScene
 from scenes.logo_pulse import LogoPulseScene
 from scenes.logo_video_pulse import LogoVideoPulseScene
+from scenes.kaleidoscope_video import KaleidoscopeVideoScene
 
 SCENE_CLASSES = {
     "particle_burst": ParticleBurstScene,
@@ -30,6 +31,7 @@ SCENE_CLASSES = {
     "noise_field": NoiseFieldScene,
     "logo_pulse": LogoPulseScene,
     "logo_video_pulse": LogoVideoPulseScene,
+    "kaleidoscope_video": KaleidoscopeVideoScene,
 }
 
 BLIT_VERTEX = """
@@ -65,7 +67,7 @@ class SceneManager:
         self.width = width
         self.height = height
 
-        self.scenes = {name: cls(ctx) for name, cls in SCENE_CLASSES.items()}
+        self.scenes = {name: cls(ctx, width, height) for name, cls in SCENE_CLASSES.items()}
 
         self.current_name = DEFAULT_SCENE
         self.next_name = None
@@ -104,6 +106,8 @@ class SceneManager:
         self.height = height
         self.fbo_current = self._make_fbo()
         self.fbo_next = self._make_fbo()
+        for scene in self.scenes.values():
+            scene.resize(width, height)
 
     def handle_program_change(self, program_number):
         """Looks up the requested scene and starts a crossfade to it."""

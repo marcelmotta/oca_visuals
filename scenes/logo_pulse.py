@@ -65,6 +65,7 @@ out vec4 f_color;
 uniform float u_time;
 uniform float u_hue;
 uniform float u_intensity;
+uniform float u_aspect;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -105,6 +106,10 @@ void main() {
     // — only the logo plane itself should visibly react to hits. This
     // uses the plain screen uv throughout.
     vec2 uv = v_uv * 2.0 - 1.0;
+    // Aspect correction: without this, the fractal bloom, ripples, and
+    // braid curves all get stretched into ellipses on any screen that
+    // isn't exactly square (i.e. virtually all of them).
+    uv.x *= u_aspect;
 
     float n1 = noise(uv * 1.1 + u_time * u_intensity * 0.06);
     float n2 = noise(uv * 2.3 - u_time * u_intensity * 0.04 + 5.0);
@@ -455,6 +460,7 @@ class LogoPulseScene(Scene):
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
         self.bg_program["u_intensity"] = self.intensity
+        self.bg_program["u_aspect"] = target.size[0] / target.size[1]
         self.bg_vao.render(moderngl.TRIANGLES)
 
         # 4. Both particle layers drawn BEFORE the logo (additive

@@ -46,7 +46,7 @@ python3 main.py
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
   bursts/pulses depending on the active scene; CC1, CC74, CC71, CC7
   control color/intensity/trail-length/brightness; program-change
-  messages (0/1/2/3/4) switch scenes with a 2-second crossfade.
+  messages (0-5) switch scenes with a 2-second crossfade.
 
 ### Per-channel routing
 
@@ -84,6 +84,7 @@ mapping and are now deliberately kept separate) — adjust
 | `scenes/noise_field.py` | Breathing organic noise field: layered bg/fg noise planes, long ripple sustain, camera parallax |
 | `scenes/logo_pulse.py` | Oca Collective logo as a real 3D-projected plane, with a particle burst on every trigger, a glowing braid, and a fractal layer in the background |
 | `scenes/logo_video_pulse.py` | Same as `logo_pulse.py`, but the plane plays the spin-loop video instead of the static PNG |
+| `scenes/kaleidoscope_video.py` | The spin-loop video through a mirrored kaleidoscope, with seigaiha waves, drifting sakura petals, and a gold mandala ring |
 | `assets/oca_logo.png` | Source logo artwork used by `logo_pulse.py` |
 | `assets/oca_spin_loop_v3.mp4` | Source video used by `logo_video_pulse.py` |
 

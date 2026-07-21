@@ -217,6 +217,7 @@ class LogoVideoPulseScene(Scene):
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
         self.bg_program["u_intensity"] = self.intensity
+        self.bg_program["u_aspect"] = target.size[0] / target.size[1]
         self.bg_vao.render(moderngl.TRIANGLES)
 
         self.particles.render()

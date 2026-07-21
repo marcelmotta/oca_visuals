@@ -12,6 +12,41 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v11 — 2026-07-21 — Scenes 1/2 aspect-ratio fix, validated across all scenes, new kaleidoscope scene
+
+- **Root cause of scenes 1 & 2 looking "sparse and close": found and
+  fixed.** Both had an internal trail-accumulation buffer hardcoded to
+  1280x720 (16:9), decoupled from the actual output resolution. That
+  buffer gets blitted onto whatever the real output is via a simple
+  full-screen stretch — if the real display isn't exactly 16:9 (very
+  common; many laptop/external displays aren't), that stretch is
+  non-uniform, squashing/compressing content along whichever axis is
+  proportionally smaller. Fixed by computing that buffer's size from
+  the ACTUAL output aspect ratio instead of a hardcoded one (new
+  `compute_work_size()` in `utils.py`), and added a proper
+  `Scene.resize()` hook (called by `SceneManager` whenever the window
+  size changes) so this stays correct if the output size changes later,
+  not just at startup.
+- **Validated the same class of bug across scenes 3-5**
+  (`noise_field`, `logo_pulse`, `logo_video_pulse`): confirmed none of
+  them have a fixed-resolution internal buffer like scenes 1 & 2 did.
+- **Found and fixed a related but distinct issue while checking:**
+  circular patterns (the fractal bloom, noise ripples, feedback blobs,
+  the particle field's swirl/burst motion) were all computed in raw
+  normalized coordinates without correcting for the screen's actual
+  aspect ratio, which stretches anything meant to look round into an
+  ellipse on any non-square display. Added proper aspect correction to
+  all five scenes.
+- **New scene 6 — `kaleidoscope_video.py`.** The spin-loop video fed
+  through a mirrored radial kaleidoscope (6-12 wedges, count nudged by
+  the "keys" channel), dressed with a few Japanese-inspired elements: a
+  seigaiha (layered wave/fan) pattern in indigo behind everything,
+  drifting sakura (cherry blossom) petals spawned gently on drum hits,
+  a thin gold mandala ring with periodic notches, and color grading
+  pulled toward a traditional indigo/vermillion/gold palette rather
+  than the source video's raw colors. Rotation speed follows the
+  "bass" channel; program-change 5 switches to it.
+
 ## v10 — 2026-07-21 — Fractal bloom: smooth in/out, much longer cycle
 
 - **Scenes 4 & 5 — fixed the actual cause of "fades suddenly."** The

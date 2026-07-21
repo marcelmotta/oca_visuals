@@ -18,7 +18,7 @@ import numpy as np
 import moderngl
 
 from scene_base import Scene
-from utils import make_fullscreen_quad_vao, hsv_to_rgb_np
+from utils import make_fullscreen_quad_vao, hsv_to_rgb_np, compute_work_size
 
 FEEDBACK_VERTEX = """
 #version 330
@@ -56,6 +56,7 @@ uniform vec3 u_fg_color;
 uniform vec2 u_cam_offset;
 uniform float u_cam_rot;
 uniform float u_cam_zoom;
+uniform float u_aspect;
 
 void main() {
     vec2 centered = v_uv - vec2(0.5);
@@ -78,10 +79,15 @@ void main() {
     prev += texture(u_prev_frame, sampled_uv + vec2(0.0, u_texel.y) * u_blur).rgb * 0.15;
     prev += texture(u_prev_frame, sampled_uv - vec2(0.0, u_texel.y) * u_blur).rgb * 0.15;
 
-    float d_bg = length(v_uv - u_bg_pos);
+    // Aspect correction: without this, the bg/fg blobs (defined via
+    // plain UV-space distance) render as ellipses whenever the work
+    // buffer isn't square — which it now correctly matches the real
+    // output aspect ratio, so this keeps the blobs actually round in
+    // that same (correct) proportion.
+    float d_bg = length(vec2((v_uv.x - u_bg_pos.x) * u_aspect, v_uv.y - u_bg_pos.y));
     float bg = smoothstep(u_bg_radius, 0.0, d_bg) * 0.5;
 
-    float d_fg = length(v_uv - u_fg_pos);
+    float d_fg = length(vec2((v_uv.x - u_fg_pos.x) * u_aspect, v_uv.y - u_fg_pos.y));
     float fg = smoothstep(u_fg_radius, 0.0, d_fg);
 
     // This frame's "target" color at this pixel (what the blobs alone
@@ -128,7 +134,10 @@ class FeedbackTrailsScene(Scene):
         self.feedback_vao = make_fullscreen_quad_vao(ctx, self.feedback_program)
         self.blit_vao = make_fullscreen_quad_vao(ctx, self.blit_program)
 
-        self.work_size = (1280, 720)
+        # Sized to match the ACTUAL output aspect ratio (capped for
+        # performance), not a hardcoded 16:9 — see particle_burst.py's
+        # identical comment for why this matters.
+        self.work_size = compute_work_size(self.output_width, self.output_height)
         self.fbo_a = self._make_fbo(ctx)
         self.fbo_b = self._make_fbo(ctx)
         self.reading_from_a = True
@@ -146,6 +155,14 @@ class FeedbackTrailsScene(Scene):
         fbo.use()
         ctx.clear(0.0, 0.0, 0.0, 1.0)
         return fbo
+
+    def resize(self, width, height):
+        super().resize(width, height)
+        new_work_size = compute_work_size(width, height)
+        if new_work_size != self.work_size:
+            self.work_size = new_work_size
+            self.fbo_a = self._make_fbo(self.ctx)
+            self.fbo_b = self._make_fbo(self.ctx)
 
     def update(self, dt, midi, camera):
         self.time += dt
@@ -211,6 +228,7 @@ class FeedbackTrailsScene(Scene):
         self.feedback_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
         self.feedback_program["u_cam_rot"] = cam.rotation * 0.3 if cam else 0.0
         self.feedback_program["u_cam_zoom"] = cam.zoom if cam else 1.0
+        self.feedback_program["u_aspect"] = self.work_size[0] / self.work_size[1]
         self.feedback_vao.render(moderngl.TRIANGLES)
 
         target.use()
