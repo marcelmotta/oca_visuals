@@ -94,7 +94,7 @@ void main() {
     float depth_scale = mix(0.6, 2.0, depth01);
     // Notably bigger baseline than before — the field should read as
     // dense and unmistakable, not a scatter of faint dots.
-    gl_PointSize = (6.0 + 26.0 * v_life01) * depth_scale;
+    gl_PointSize = (14.0 + 42.0 * v_life01) * depth_scale;
 }
 """
 
@@ -217,9 +217,16 @@ class ParticleBurstScene(Scene):
         hues = (hue + np.random.uniform(-0.10, 0.10, n)) % 1.0
         self.color[idx] = hsv_to_rgb_np(hues, 0.45, 0.85)
 
-    def _spawn_burst(self, origin_x, hue, n, speed_low, speed_high,
+    def _spawn_burst(self, origin, hue, n, speed_low, speed_high,
                       life_low, life_high, sat=0.85):
-        """Foreground layer: bright, larger, closer to camera."""
+        """Foreground layer: bright, larger, closer to camera.
+
+        `origin` is a full (x, y, z) tuple — each pop's starting point is
+        now randomized across all three axes (previously y was always
+        pinned to 0 and z only varied per-particle around a fixed
+        band), so successive pops visibly start from different places
+        in the field rather than always the same horizontal line.
+        """
         idx = self._next_indices(n)
         theta = np.random.uniform(0, 2 * np.pi, n)
         phi = np.random.uniform(0, np.pi, n)
@@ -229,11 +236,14 @@ class ParticleBurstScene(Scene):
             np.sin(phi) * np.sin(theta),
             np.cos(phi),
         ], axis=-1)
-        self.position[idx] = np.stack([
-            np.full(n, origin_x),
-            np.zeros(n),
-            np.random.uniform(0.2, 1.0, n),  # foreground depth range
-        ], axis=-1)
+        ox, oy, oz = origin
+        # Individual particles in the pop jitter slightly around the
+        # pop's own (x, y, z) origin before diffusing outward, so the
+        # burst has a little volume at birth rather than starting from
+        # one infinitesimal point.
+        jitter = np.random.uniform(-0.05, 0.05, (n, 3)).astype("f4")
+        self.position[idx] = np.array([ox, oy, oz], dtype="f4") + jitter
+        np.clip(self.position[idx, 2], -1.0, 1.0, out=self.position[idx, 2])
         self.velocity[idx] = dirs * speed[:, None]
         # Longer sustain: bursts now live 2.5-5 seconds instead of ~2s.
         self.life[idx] = np.random.uniform(life_low, life_high, n)
@@ -279,8 +289,14 @@ class ParticleBurstScene(Scene):
                     origin_x = (frac * 2.0 - 1.0) * 0.8
                 else:
                     origin_x = np.random.uniform(-0.6, 0.6)
+                # Y and Z are now randomized per pop too (previously Y
+                # was always 0 and Z only varied per-particle around a
+                # fixed band) — each pop now genuinely starts from a
+                # different point across all three axes.
+                origin_y = np.random.uniform(-0.6, 0.6)
+                origin_z = np.random.uniform(-0.2, 1.0)
                 self._spawn_burst(
-                    origin_x, style["hue"], n=style["n"],
+                    (origin_x, origin_y, origin_z), style["hue"], n=style["n"],
                     speed_low=style["speed"][0], speed_high=style["speed"][1],
                     life_low=style["life"][0], life_high=style["life"][1],
                     sat=style["sat"],

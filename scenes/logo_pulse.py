@@ -34,7 +34,7 @@ import moderngl
 from PIL import Image
 
 from scene_base import Scene
-from utils import make_fullscreen_quad_vao
+from utils import make_fullscreen_quad_vao, hsv_to_rgb_np
 from particle_field import ParticleField
 
 ASSET_PATH = os.path.join(
@@ -66,6 +66,14 @@ uniform float u_intensity;
 uniform vec2 u_cam_offset;
 uniform float u_cam_rot;
 uniform float u_cam_zoom;
+
+// Gentle glow pulses on trigger (replaces the earlier particle-ring
+// burst with something softer): each pulse is a soft, slowly expanding
+// ring of light, not discrete points.
+#define MAX_PULSES 9
+uniform vec2 u_pulse_pos[MAX_PULSES];
+uniform float u_pulse_age[MAX_PULSES];
+uniform vec3 u_pulse_color[MAX_PULSES];
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -122,28 +130,61 @@ void main() {
     // Fractal layer: sits furthest back, adding fine self-similar detail
     // and a sense of depth beneath the noise wash. `c` drifts slowly
     // around a small circle so the pattern continuously morphs — that
-    // rotation speed (u_time * 0.03) is the "bloom speed" and is left
-    // unchanged; only the spatial scale/opacity below were increased so
-    // the pattern itself is far more visually present.
+    // rotation speed (u_time * 0.03) is the "bloom speed" and stays
+    // unchanged; the spatial scale below was increased further (this is
+    // now zoomed out significantly more) so the pattern repeats more
+    // often across the frame and reads as clearly present rather than
+    // a faint smear.
     vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));
-    float f = julia(cam_uv * 1.35, julia_c);
+    float f = julia(cam_uv * 2.4, julia_c);
     vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
-    color += fractal_color * 0.55;
+    color += fractal_color * 0.65;
 
     // Translucent, glowing braid across the horizon: three strands
     // weaving slowly, each a soft sine curve offset in phase so they
-    // cross over one another like a braid.
+    // cross over one another like a braid, plus a gentle flicker in a
+    // contrasting color that randomly brightens small stretches of the
+    // strands over time (like light catching a moving thread).
     vec3 braid_color = hsv2rgb(vec3(fract(u_hue + 0.55), 0.45, 1.0));
+    vec3 flicker_color = hsv2rgb(vec3(fract(u_hue + 0.05), 0.85, 1.0));
     float braid = 0.0;
+    float flicker_glow = 0.0;
     for (int i = 0; i < 3; i++) {
         float phase = float(i) * 2.094395; // 2*pi/3 apart
         float strand_y = -0.05
             + 0.07 * sin(cam_uv.x * 2.6 + u_time * 0.12 + phase)
             + 0.025 * sin(cam_uv.x * 6.3 - u_time * 0.07 + phase * 1.7);
         float d = abs(cam_uv.y - strand_y);
-        braid += exp(-d * d * 260.0);
+        float strand_glow = exp(-d * d * 260.0);
+        braid += strand_glow;
+
+        // Gentle flicker: a slow-changing per-strand random value picks
+        // out small patches along x that briefly brighten in a
+        // contrasting color. Changes a few times a second, not every
+        // frame, so it reads as a soft flicker rather than noise.
+        float cell = floor(cam_uv.x * 4.0 + float(i) * 7.0 + u_time * 1.5);
+        float flick = hash(vec2(cell, float(i) * 3.1));
+        float flicker_strength = smoothstep(0.82, 1.0, flick);
+        flicker_glow += strand_glow * flicker_strength;
     }
     color += braid_color * braid * 0.45;
+    color += flicker_color * flicker_glow * 0.5;
+
+    // Gentle glow pulses (letter triggers): soft expanding rings, faded
+    // in quickly and out slowly, much softer than discrete particles.
+    const float PULSE_MAX_AGE = 2.2;
+    const float PULSE_SPEED = 0.55;
+    for (int i = 0; i < MAX_PULSES; i++) {
+        float age = u_pulse_age[i];
+        if (age < PULSE_MAX_AGE) {
+            float radius = age * PULSE_SPEED;
+            float d = length(uv - u_pulse_pos[i]);
+            float ring = exp(-pow(d - radius, 2.0) * 30.0);
+            float fade_in = smoothstep(0.0, 0.2, age);
+            float fade_out = 1.0 - smoothstep(0.0, PULSE_MAX_AGE, age);
+            color += u_pulse_color[i] * ring * fade_in * fade_out * 0.5;
+        }
+    }
 
     f_color = vec4(color, 1.0);
 }
@@ -275,15 +316,20 @@ class LogoPulseScene(Scene):
         self.fov = math.radians(50)
         self.distance = half_h / math.tan(self.fov / 2.0)
 
-        # Particle burst on triggers, layered on top of everything.
-        # "particles" is the original background pixel-cloud (unchanged
-        # behavior). "letter_particles" is a separate field for bursts
-        # that start on each character and dissolve toward the screen
-        # edges (edge_fade=True) — kept as its own instance so the
-        # original background pixel-cloud's behavior stays exactly as
-        # it was.
+        # Background pixel-cloud burst on triggers (unchanged behavior).
+        # The per-character effect used to be a second ParticleField
+        # (a scattered/ring burst); it's now a soft analytic glow pulse
+        # computed directly in the background shader instead (see
+        # BG_FRAGMENT's u_pulse_* uniforms) — gentler and more of a
+        # "glow" than discrete points.
         self.particles = ParticleField(ctx, max_particles=3000)
-        self.letter_particles = ParticleField(ctx, max_particles=3000, edge_fade=True)
+
+        MAX_PULSES = 9
+        self.pulse_pos = np.zeros((MAX_PULSES, 2), dtype="f4")
+        self.pulse_age = np.full(MAX_PULSES, 999.0, dtype="f4")
+        self.pulse_color = np.zeros((MAX_PULSES, 3), dtype="f4")
+        self.pulse_cursor = 0
+        self.max_pulses = MAX_PULSES
 
         self.time = 0.0
         self.pulse = 0.0
@@ -296,11 +342,12 @@ class LogoPulseScene(Scene):
 
         triggered = bool(midi.role_triggers("drums"))
         self.pulse = 1.0 if triggered else self.pulse * 0.95
-        # Spawning the letter bursts needs this frame's projection matrix
-        # (so bursts start exactly on the characters even as the logo
+        # Spawning the glow pulses needs this frame's projection matrix
+        # (so they start exactly on the characters even as the logo
         # tilts), which is only available in render() — so just record
         # that a trigger happened here, and do the actual spawn there.
         self.letter_trigger_pending = triggered
+        self.pulse_age += dt
 
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
@@ -314,25 +361,16 @@ class LogoPulseScene(Scene):
                 speed_range=(0.4, 1.2), life_range=(2.0, 4.0), sat=0.9,
             )
         self.particles.update(dt)
-        self.letter_particles.update(dt)
 
     def render(self, target):
         ctx = self.ctx
         target.use()
         cam = self.camera
 
-        # 1. Background wash + braid (fullscreen, full overwrite).
-        self.bg_program["u_time"] = self.time
-        self.bg_program["u_hue"] = self.hue
-        self.bg_program["u_intensity"] = self.intensity
-        self.bg_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
-        self.bg_program["u_cam_rot"] = cam.rotation if cam else 0.0
-        self.bg_program["u_cam_zoom"] = cam.zoom if cam else 1.0
-        self.bg_vao.render(moderngl.TRIANGLES)
-
-        # 2. Logo plane transform, computed here (not just at draw time)
-        # because the letter-burst spawn below needs it to know where
-        # each character currently sits on screen.
+        # 1. Logo plane transform, computed FIRST because the glow-pulse
+        # spawn below needs it to know where each character currently
+        # sits on screen, and the background pass (drawn next) needs the
+        # resulting pulse data for its uniforms.
         #
         # More aggressive rotation on all three axes than before:
         # yaw/pitch amplitudes roughly doubled, and a new Z-axis roll
@@ -350,11 +388,12 @@ class LogoPulseScene(Scene):
         view = _translation_z(-self.distance)
         mvp = proj @ view @ model
 
-        # 3. Letter bursts: on a trigger, spawn one burst per character,
+        # 2. Glow pulses: on a trigger, register one pulse per character,
         # each a different color, positioned exactly where that
         # character currently appears on screen (projected through the
-        # same matrix used to draw the tilted logo, so it tracks the
-        # camera's rotation correctly instead of assuming a fixed pose).
+        # same matrix used to draw the tilted logo). These are gentle,
+        # soft-edged expanding rings of light computed directly in the
+        # background shader (u_pulse_*), not discrete particles.
         if self.letter_trigger_pending:
             anchors = np.array(
                 [[x, y, 0.0, 1.0] for x, y in CHARACTER_ANCHORS], dtype="f4"
@@ -363,18 +402,32 @@ class LogoPulseScene(Scene):
             ndc = clip[:, :2] / clip[:, 3:4]
             for i, (nx, ny) in enumerate(ndc):
                 char_hue = (self.hue + i / 3.0) % 1.0
-                self.letter_particles.spawn_ring_burst(
-                    origin=(float(nx), float(ny)), hue=char_hue,
-                    n=120, speed=1.0, life=1.6, sat=0.9,
-                )
+                slot = self.pulse_cursor
+                self.pulse_pos[slot] = (float(nx), float(ny))
+                self.pulse_age[slot] = 0.0
+                self.pulse_color[slot] = hsv_to_rgb_np(
+                    np.array([char_hue]), np.array([0.7]), np.array([1.0])
+                )[0]
+                self.pulse_cursor = (self.pulse_cursor + 1) % self.max_pulses
             self.letter_trigger_pending = False
 
-        # 4. Both particle layers drawn BEFORE the logo (see the note in
-        # the background pixel-cloud comment above — additive particles
-        # drawn on top of the logo's pure-white pixels would clip
-        # invisibly).
+        # 3. Background wash + braid + fractal + glow pulses (fullscreen,
+        # full overwrite).
+        self.bg_program["u_time"] = self.time
+        self.bg_program["u_hue"] = self.hue
+        self.bg_program["u_intensity"] = self.intensity
+        self.bg_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
+        self.bg_program["u_cam_rot"] = cam.rotation if cam else 0.0
+        self.bg_program["u_cam_zoom"] = cam.zoom if cam else 1.0
+        self.bg_program["u_pulse_pos"] = [tuple(p) for p in self.pulse_pos]
+        self.bg_program["u_pulse_age"] = [float(a) for a in self.pulse_age]
+        self.bg_program["u_pulse_color"] = [tuple(c) for c in self.pulse_color]
+        self.bg_vao.render(moderngl.TRIANGLES)
+
+        # 4. Background pixel-cloud, drawn BEFORE the logo (additive
+        # particles drawn on top of the logo's pure-white pixels would
+        # clip invisibly).
         self.particles.render()
-        self.letter_particles.render()
 
         # 5. Logo plane in 3D, using the transform computed above.
         mvp_col_major = mvp.T.astype("f4").copy()

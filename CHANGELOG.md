@@ -12,6 +12,30 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v3 — 2026-07-21 — Gentler pulse, bigger points, 3-axis pop origins, denser fractal, braid flicker
+
+- **Scenes 4 & 5 — pulsation replaced with a gentle glow.** The
+  particle-ring burst (from v2) was still too intense/explosive. It's
+  now a soft, analytic glow pulse computed directly in the background
+  shader — a gently expanding, soft-edged ring of light with a quick
+  fade-in and slow fade-out, no discrete points at all. Positioned the
+  same way as before (projected through the logo's 3D transform so it
+  tracks each character correctly).
+- **Scene 1 — bigger points.** Base point size roughly doubled so the
+  field reads as close/substantial rather than distant and small.
+- **Scene 1 — pop origins randomized across X, Y, *and* Z.** Previously
+  Y was always pinned to 0 for every burst (only X and, per-particle,
+  Z varied) — now each pop's starting point is randomized across all
+  three axes, so successive pops visibly start from different places
+  in the field rather than always along the same horizontal line.
+- **Scenes 4 & 5 — fractal frequency increased further** (zoomed out
+  more to reveal more repeating detail), still with the morph/bloom
+  speed unchanged.
+- **Scenes 4 & 5 — braid now flickers** in a contrasting color: small
+  stretches of the strands randomly brighten a few times a second, like
+  light catching a moving thread, layered on top of the existing slow
+  weave.
+
 ## v2 — 2026-07-21 — Bug fixes + more aggressive logo camera
 
 - **Scene 2 — fixed a real white-out bug.** The previous version's

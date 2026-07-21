@@ -32,7 +32,7 @@ import moderngl
 import cv2
 
 from scene_base import Scene
-from utils import make_fullscreen_quad_vao
+from utils import make_fullscreen_quad_vao, hsv_to_rgb_np
 from particle_field import ParticleField
 
 # Reuse the exact same background (fractal + noise + braid) and logo-
@@ -116,7 +116,13 @@ class LogoVideoPulseScene(Scene):
         self.distance = half_h / math.tan(self.fov / 2.0)
 
         self.particles = ParticleField(ctx, max_particles=3000)
-        self.letter_particles = ParticleField(ctx, max_particles=3000, edge_fade=True)
+
+        MAX_PULSES = 9
+        self.pulse_pos = np.zeros((MAX_PULSES, 2), dtype="f4")
+        self.pulse_age = np.full(MAX_PULSES, 999.0, dtype="f4")
+        self.pulse_color = np.zeros((MAX_PULSES, 3), dtype="f4")
+        self.pulse_cursor = 0
+        self.max_pulses = MAX_PULSES
 
         self.time = 0.0
         self.pulse = 0.0
@@ -153,6 +159,7 @@ class LogoVideoPulseScene(Scene):
         triggered = bool(midi.role_triggers("drums"))
         self.pulse = 1.0 if triggered else self.pulse * 0.95
         self.letter_trigger_pending = triggered
+        self.pulse_age += dt
 
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
@@ -165,25 +172,15 @@ class LogoVideoPulseScene(Scene):
                 speed_range=(0.4, 1.2), life_range=(2.0, 4.0), sat=0.9,
             )
         self.particles.update(dt)
-        self.letter_particles.update(dt)
 
     def render(self, target):
         ctx = self.ctx
         target.use()
         cam = self.camera
 
-        self.bg_program["u_time"] = self.time
-        self.bg_program["u_hue"] = self.hue
-        self.bg_program["u_intensity"] = self.intensity
-        self.bg_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
-        self.bg_program["u_cam_rot"] = cam.rotation if cam else 0.0
-        self.bg_program["u_cam_zoom"] = cam.zoom if cam else 1.0
-        self.bg_vao.render(moderngl.TRIANGLES)
-
-        # Plane transform, computed here (not just at draw time) because
-        # the letter-burst spawn below needs it to know where each
-        # character currently sits on screen. Same aggressive yaw/pitch
-        # amplitudes and new roll axis as logo_pulse.py.
+        # Plane transform, computed FIRST because the glow-pulse spawn
+        # below needs it to know where each character currently sits on
+        # screen, and the background pass needs the resulting pulse data.
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
         yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.55
@@ -196,10 +193,6 @@ class LogoVideoPulseScene(Scene):
         view = _translation_z(-self.distance)
         mvp = proj @ view @ model
 
-        # Letter bursts: one per character, each a different color,
-        # positioned exactly where that character currently appears on
-        # screen (projected through the same matrix used to draw the
-        # tilted plane).
         if self.letter_trigger_pending:
             anchors = np.array(
                 [[x, y, 0.0, 1.0] for x, y in CHARACTER_ANCHORS], dtype="f4"
@@ -208,14 +201,27 @@ class LogoVideoPulseScene(Scene):
             ndc = clip[:, :2] / clip[:, 3:4]
             for i, (nx, ny) in enumerate(ndc):
                 char_hue = (self.hue + i / 3.0) % 1.0
-                self.letter_particles.spawn_ring_burst(
-                    origin=(float(nx), float(ny)), hue=char_hue,
-                    n=120, speed=1.0, life=1.6, sat=0.9,
-                )
+                slot = self.pulse_cursor
+                self.pulse_pos[slot] = (float(nx), float(ny))
+                self.pulse_age[slot] = 0.0
+                self.pulse_color[slot] = hsv_to_rgb_np(
+                    np.array([char_hue]), np.array([0.7]), np.array([1.0])
+                )[0]
+                self.pulse_cursor = (self.pulse_cursor + 1) % self.max_pulses
             self.letter_trigger_pending = False
 
+        self.bg_program["u_time"] = self.time
+        self.bg_program["u_hue"] = self.hue
+        self.bg_program["u_intensity"] = self.intensity
+        self.bg_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
+        self.bg_program["u_cam_rot"] = cam.rotation if cam else 0.0
+        self.bg_program["u_cam_zoom"] = cam.zoom if cam else 1.0
+        self.bg_program["u_pulse_pos"] = [tuple(p) for p in self.pulse_pos]
+        self.bg_program["u_pulse_age"] = [float(a) for a in self.pulse_age]
+        self.bg_program["u_pulse_color"] = [tuple(c) for c in self.pulse_color]
+        self.bg_vao.render(moderngl.TRIANGLES)
+
         self.particles.render()
-        self.letter_particles.render()
 
         mvp_col_major = mvp.T.astype("f4").copy()
 
