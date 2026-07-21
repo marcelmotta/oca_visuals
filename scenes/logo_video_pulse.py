@@ -124,6 +124,10 @@ class LogoVideoPulseScene(Scene):
         self.camera = None
         self.letter_trigger_pending = False
 
+        self.next_glitch_time = np.random.uniform(10.0, 25.0)
+        self.glitch_active_until = 0.0
+        self.glitch_seed = 0.0
+
     def _prepare_frame(self, frame_bgr):
         """Resizes a decoded BGR frame and converts it to RGBA bytes."""
         if (frame_bgr.shape[1], frame_bgr.shape[0]) != (self.frame_w, self.frame_h):
@@ -158,6 +162,12 @@ class LogoVideoPulseScene(Scene):
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
         self.intensity = 0.3 + midi.role_cc("bass", "intensity", 0.0) * 1.5
+
+        if self.time >= self.next_glitch_time and self.time >= self.glitch_active_until:
+            duration = np.random.uniform(0.05, 0.15)
+            self.glitch_active_until = self.time + duration
+            self.glitch_seed = np.random.uniform(0.0, 1000.0)
+            self.next_glitch_time = self.glitch_active_until + np.random.uniform(10.0, 25.0)
 
         if triggered:
             origin = (np.random.uniform(-0.8, 0.8), np.random.uniform(-0.6, 0.6))
@@ -205,9 +215,6 @@ class LogoVideoPulseScene(Scene):
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
         self.bg_program["u_intensity"] = self.intensity
-        self.bg_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
-        self.bg_program["u_cam_rot"] = cam.rotation if cam else 0.0
-        self.bg_program["u_cam_zoom"] = cam.zoom if cam else 1.0
         self.bg_vao.render(moderngl.TRIANGLES)
 
         self.particles.render()
@@ -218,6 +225,9 @@ class LogoVideoPulseScene(Scene):
         self.texture.use(location=0)
         self.logo_program["u_logo"] = 0
         self.logo_program["u_mvp"].write(mvp_col_major.tobytes())
+        glitch_active = self.time < self.glitch_active_until
+        self.logo_program["u_glitch_amount"] = 1.0 if glitch_active else 0.0
+        self.logo_program["u_glitch_seed"] = self.glitch_seed
 
         ctx.enable(moderngl.BLEND)
         ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA

@@ -168,3 +168,10 @@ channels per part rather than everything on one channel.
 - No audio-reactivity (mic/line-in analysis) yet — MIDI-only for now,
   as scoped. Straightforward to add later via a small FFT module feeding
   the same `MidiState`-style interface.
+- Scenes 4 & 5 have a rare, brief, subtle random "glitch" (slice-tear +
+  chromatic split) on the logo/video plane — see `next_glitch_time` /
+  `glitch_active_until` in those files if you want to tune how often or
+  how strong it is.
+- Fullscreen (`FULLSCREEN = True` in `config.py`) automatically uses
+  your display's native resolution and refresh rate — 4K works out of
+  the box if that's what the screen/projector reports.

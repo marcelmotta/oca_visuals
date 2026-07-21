@@ -12,6 +12,32 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v7 — 2026-07-21 — Camera decoupled from background, edge-to-center fractal bloom, logo glitch, fullscreen native resolution
+
+- **Scenes 4 & 5 — braid confirmed final, kept as-is** (thick pipe +
+  thin flowing sliver from v6).
+- **Scenes 4 & 5 — fractal/braid no longer pulsate with the logo.**
+  Removed the background shader's camera coupling entirely (it was
+  reading the shared camera's zoom/pan/rotation, including its
+  drum-triggered "punch," at reduced strength) — now only the logo/video
+  plane itself reacts to hits; the background is fully independent.
+- **Scenes 4 & 5 — fractal frequency increased again**, and it now
+  blooms in cyclically from the edges toward the center (a sweeping
+  reveal wave) rather than being uniformly visible everywhere at once.
+- **Scenes 4 & 5 — subtle glitch effect added to the logo/video plane.**
+  Rare (roughly every 10-25s), brief (0.05-0.15s), combining a small
+  horizontal slice-tear with a slight chromatic (RGB) channel split —
+  kept deliberately minor so it reads as a quick flicker, not a
+  dramatic effect.
+- **Fullscreen now auto-fits the display's native resolution/refresh
+  rate** (including 4K, if that's what the screen/projector reports)
+  instead of a hardcoded size.
+- **(b) Percussion-triggered burst:** re-audited the full trigger →
+  spawn → render path again and it continues to check out logically;
+  still unresolved without the `MIDI_DEBUG` output requested in v6 to
+  confirm whether channels 4-7 are actually arriving as separate
+  channels from the SEQTRAK/Ableton setup.
+
 ## v6 — 2026-07-21 — Braid restored + thin flowing sliver, MIDI debug tool
 
 - **Scenes 4 & 5 — braid separated into two distinct elements.** The

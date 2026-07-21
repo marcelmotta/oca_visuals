@@ -37,10 +37,24 @@ def create_window():
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
 
-    monitor = glfw.get_primary_monitor() if FULLSCREEN else None
-    window = glfw.create_window(
-        WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, monitor, None
-    )
+    if FULLSCREEN:
+        # Use the display's own native resolution and refresh rate
+        # (whatever that is — 1080p, 4K, etc.) rather than a hardcoded
+        # size, so the output always fills the screen/projector at its
+        # correct aspect ratio. This also means 4K "just works" if
+        # that's what the connected display reports, with no extra
+        # config needed.
+        monitor = glfw.get_primary_monitor()
+        video_mode = glfw.get_video_mode(monitor)
+        width, height = video_mode.size.width, video_mode.size.height
+        glfw.window_hint(glfw.REFRESH_RATE, video_mode.refresh_rate)
+        print(f"Fullscreen: using display's native {width}x{height} "
+              f"@ {video_mode.refresh_rate}Hz")
+    else:
+        monitor = None
+        width, height = WINDOW_WIDTH, WINDOW_HEIGHT
+
+    window = glfw.create_window(width, height, WINDOW_TITLE, monitor, None)
     if not window:
         glfw.terminate()
         raise RuntimeError("Could not create GLFW window")

@@ -19,11 +19,27 @@ WINDOW / OUTPUT SETTINGS
 """
 
 # --- Window / output -------------------------------------------------------
+# WINDOW_WIDTH/HEIGHT are only used in windowed mode (FULLSCREEN=False),
+# e.g. for testing on your laptop screen. In fullscreen mode, the window
+# automatically uses whatever resolution and refresh rate the connected
+# display/projector reports as its native mode — including 4K, if that's
+# what it is — so you don't need to hardcode a target resolution here.
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 WINDOW_TITLE = "Oca Collective — Visuals"
 FULLSCREEN = False  # set True for showtime on the projector/output screen
 TARGET_FPS = 60
+
+# A note on 4K performance: the shader work (noise, the Julia-set
+# fractal, particle rendering) scales with pixel count, and 4K has
+# ~9x the pixels of 720p. On a discrete GPU or Apple Silicon this is
+# generally very manageable for what this project draws — but if you
+# see dropped frames at 4K on older/integrated graphics, the simplest
+# fix is running at your display's next resolution down, or lowering
+# MAX_ITER in the fractal shaders (search for "MAX_ITER" in
+# scenes/logo_pulse.py). The particle/feedback "work_size" framebuffers
+# used internally by a few scenes are already fixed at 1280x720
+# regardless of output resolution, which keeps their cost constant.
 
 # --- MIDI input --------------------------------------------------------
 # Leave as None to auto-select (the app will print available ports on

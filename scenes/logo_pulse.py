@@ -65,9 +65,6 @@ out vec4 f_color;
 uniform float u_time;
 uniform float u_hue;
 uniform float u_intensity;
-uniform vec2 u_cam_offset;
-uniform float u_cam_rot;
-uniform float u_cam_zoom;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -103,18 +100,14 @@ float julia(vec2 z, vec2 c) {
 }
 
 void main() {
+    // NOTE: the background (noise wash, fractal, braid) intentionally
+    // does NOT read the shared camera's pan/zoom/rotation/punch at all
+    // — only the logo plane itself should visibly react to hits. This
+    // uses the plain screen uv throughout.
     vec2 uv = v_uv * 2.0 - 1.0;
 
-    // Background barely moves with the camera (it's the "far" layer) —
-    // only a gentle fraction of the camera's pan/zoom/rotate reaches it.
-    float ca = cos(u_cam_rot * 0.3);
-    float sa = sin(u_cam_rot * 0.3);
-    vec2 cam_uv = mat2(ca, -sa, sa, ca) * uv;
-    cam_uv *= mix(1.0, u_cam_zoom, 0.4);
-    cam_uv -= u_cam_offset * 0.3;
-
-    float n1 = noise(cam_uv * 1.1 + u_time * u_intensity * 0.06);
-    float n2 = noise(cam_uv * 2.3 - u_time * u_intensity * 0.04 + 5.0);
+    float n1 = noise(uv * 1.1 + u_time * u_intensity * 0.06);
+    float n2 = noise(uv * 2.3 - u_time * u_intensity * 0.04 + 5.0);
     float hueA = fract(u_hue + n1 * 0.18);
     float hueB = fract(u_hue + 0.4 + n2 * 0.18);
     vec3 colorA = hsv2rgb(vec3(hueA, 0.75, 0.10 + 0.18 * n1));
@@ -125,14 +118,19 @@ void main() {
     // and a sense of depth beneath the noise wash. `c` drifts slowly
     // around a small circle so the pattern continuously morphs — that
     // rotation speed (u_time * 0.03) is the "bloom speed" and stays
-    // unchanged; the spatial scale below was increased further (this is
-    // now zoomed out significantly more) so the pattern repeats more
-    // often across the frame and reads as clearly present rather than
-    // a faint smear.
+    // unchanged; spatial scale increased further again (more repeats
+    // across the frame). It also now blooms in cyclically from the
+    // edges toward the center: a wave threshold sweeps inward across
+    // `dist` (distance from screen center) so edges reveal first.
     vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));
-    float f = julia(cam_uv * 2.4, julia_c);
+    float f = julia(uv * 3.6, julia_c);
     vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
-    color += fractal_color * 0.65;
+
+    float dist = length(uv);                    // 0 at center, ~1.41 at corners
+    float bloom_phase = fract(u_time * 0.05);    // slow repeating cycle (~20s)
+    float wave_pos = mix(1.6, -0.5, bloom_phase); // starts past the edges, sweeps inward
+    float bloom_mask = smoothstep(wave_pos - 0.45, wave_pos, dist);
+    color += fractal_color * bloom_mask * 0.65;
 
     // Translucent, glowing braid across the horizon: three THICK, soft
     // "pipe" strands on a smooth, slow, purely sinusoidal path (restored
@@ -151,9 +149,9 @@ void main() {
 
         // The pipe itself: smooth sine path only, original thickness.
         float strand_y = -0.05
-            + 0.07 * sin(cam_uv.x * 2.6 + u_time * 0.12 + phase)
-            + 0.025 * sin(cam_uv.x * 6.3 - u_time * 0.07 + phase * 1.7);
-        float d = abs(cam_uv.y - strand_y);
+            + 0.07 * sin(uv.x * 2.6 + u_time * 0.12 + phase)
+            + 0.025 * sin(uv.x * 6.3 - u_time * 0.07 + phase * 1.7);
+        float d = abs(uv.y - strand_y);
         float pipe_glow = exp(-d * d * 260.0); // restored original thickness
         braid += pipe_glow;
 
@@ -162,14 +160,14 @@ void main() {
         // than the pipe's own smooth path), rendered much thinner, and
         // its brightness travels along x over time so it reads as light
         // flowing through the tube rather than a fixed mark.
-        float wobble = noise(vec2(cam_uv.x * 3.5 + float(i) * 11.0, u_time * 0.35 + phase))
-            + 0.5 * noise(vec2(cam_uv.x * 9.0 - float(i) * 5.0, u_time * 0.6));
+        float wobble = noise(vec2(uv.x * 3.5 + float(i) * 11.0, u_time * 0.35 + phase))
+            + 0.5 * noise(vec2(uv.x * 9.0 - float(i) * 5.0, u_time * 0.6));
         float sliver_y = strand_y + 0.035 * (wobble - 0.75);
-        float sd = abs(cam_uv.y - sliver_y);
+        float sd = abs(uv.y - sliver_y);
         float sliver_shape = exp(-sd * sd * 2200.0); // thin sliver, well inside the pipe's width
 
         float travel = smoothstep(0.3, 1.0,
-            sin(cam_uv.x * 4.0 - u_time * (1.2 + float(i) * 0.3) + phase));
+            sin(uv.x * 4.0 - u_time * (1.2 + float(i) * 0.3) + phase));
         sliver_glow += sliver_shape * travel;
     }
     color += braid_color * braid * 0.45;
@@ -198,16 +196,43 @@ LOGO_FRAGMENT = """
 in vec2 v_uv;
 out vec4 f_color;
 uniform sampler2D u_logo;
+uniform float u_glitch_amount;  // 0 = no glitch, >0 = active this frame
+uniform float u_glitch_seed;    // changes per glitch event
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
 
 void main() {
-    vec4 tex = texture(u_logo, vec2(v_uv.x, 1.0 - v_uv.y));
-    float lum = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
+    vec2 uv = v_uv;
+
+    // Subtle glitch: for the brief window it's active, a handful of
+    // horizontal bands get a small random horizontal offset (like a
+    // signal tear), and channels are sampled with a slight offset from
+    // each other (chromatic split) — kept small so it reads as a quick
+    // flicker/glitch rather than a dramatic effect.
+    vec3 tex_rgb;
+    if (u_glitch_amount > 0.0) {
+        float band = floor(v_uv.y * 18.0);
+        float band_offset = (hash(vec2(band, u_glitch_seed)) - 0.5) * 0.05 * u_glitch_amount;
+        uv.x += band_offset;
+
+        float split = 0.006 * u_glitch_amount;
+        float r = texture(u_logo, vec2(uv.x + split, 1.0 - uv.y)).r;
+        float g = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).g;
+        float b = texture(u_logo, vec2(uv.x - split, 1.0 - uv.y)).b;
+        tex_rgb = vec3(r, g, b);
+    } else {
+        tex_rgb = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).rgb;
+    }
+
+    float lum = dot(tex_rgb, vec3(0.299, 0.587, 0.114));
     // Only the white mark is opaque; the source image's black
     // background is fully transparent so the animated layer behind
     // shows through everywhere except the mark itself.
     float alpha = smoothstep(0.35, 0.55, lum);
     if (alpha <= 0.01) discard;
-    f_color = vec4(tex.rgb, alpha);
+    f_color = vec4(tex_rgb, alpha);
 }
 """
 
@@ -321,6 +346,13 @@ class LogoPulseScene(Scene):
         self.camera = None
         self.letter_trigger_pending = False
 
+        # Random, infrequent glitch scheduling: pick a random gap (10-25s)
+        # before the next glitch, and a short random duration (0.05-0.15s)
+        # for how long it lasts once triggered.
+        self.next_glitch_time = np.random.uniform(10.0, 25.0)
+        self.glitch_active_until = 0.0
+        self.glitch_seed = 0.0
+
     def update(self, dt, midi, camera):
         self.time += dt
         self.camera = camera
@@ -338,6 +370,15 @@ class LogoPulseScene(Scene):
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
         self.intensity = 0.3 + midi.role_cc("bass", "intensity", 0.0) * 1.5
+
+        # Random, infrequent, brief glitch: once the scheduled time
+        # arrives, activate it for a short random duration, then
+        # schedule the next one further out.
+        if self.time >= self.next_glitch_time and self.time >= self.glitch_active_until:
+            duration = np.random.uniform(0.05, 0.15)
+            self.glitch_active_until = self.time + duration
+            self.glitch_seed = np.random.uniform(0.0, 1000.0)
+            self.next_glitch_time = self.glitch_active_until + np.random.uniform(10.0, 25.0)
 
         # Background pixel-cloud — unchanged from before.
         if triggered:
@@ -398,9 +439,6 @@ class LogoPulseScene(Scene):
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
         self.bg_program["u_intensity"] = self.intensity
-        self.bg_program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
-        self.bg_program["u_cam_rot"] = cam.rotation if cam else 0.0
-        self.bg_program["u_cam_zoom"] = cam.zoom if cam else 1.0
         self.bg_vao.render(moderngl.TRIANGLES)
 
         # 4. Both particle layers drawn BEFORE the logo (additive
@@ -415,6 +453,9 @@ class LogoPulseScene(Scene):
         self.texture.use(location=0)
         self.logo_program["u_logo"] = 0
         self.logo_program["u_mvp"].write(mvp_col_major.tobytes())
+        glitch_active = self.time < self.glitch_active_until
+        self.logo_program["u_glitch_amount"] = 1.0 if glitch_active else 0.0
+        self.logo_program["u_glitch_seed"] = self.glitch_seed
 
         ctx.enable(moderngl.BLEND)
         ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
