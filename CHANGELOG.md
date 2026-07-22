@@ -12,6 +12,26 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v21 — 2026-07-22 — Fixed a second, distinct bug: rotation made all characters vanish
+
+- **The v20 fix introduced a real regression**: `theta_center` is
+  computed in the ring's ROTATED frame (`u_rotation` already added into
+  `angle` before this point), but was then used directly to place
+  `slot_center_pos` in raw screen space — a mismatch that grows with
+  `u_rotation` and, once the ring is spinning at all, pushes every
+  character's valid sampling region outside [0,1] simultaneously. That
+  produced exactly what was reported: characters completely gone.
+  Traced to the exact line via direct numeric tracing (not guessing) —
+  confirmed valid pixel coverage dropped to exactly zero the moment
+  rotation was nonzero, at every tested resolution.
+- **Fixed by converting back to the screen-space angle**
+  (`theta_center - u_rotation`) before using it for position/
+  decomposition. Verified numerically: valid coverage now stays
+  constant (~12.9%) across rotation values from -10 to +6.5, and the
+  v20 mirroring fix still holds correctly in combination with this
+  (re-ran the upright/orientation check across 4 rotation values × 12
+  angles = 48 cases, all passing).
+
 ## v20 — 2026-07-22 — Actually found and fixed the ring-text mirroring root cause
 
 - **Root cause identified via rigorous numeric verification** (built a

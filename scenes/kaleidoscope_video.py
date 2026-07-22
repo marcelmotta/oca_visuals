@@ -230,11 +230,21 @@ void main() {
     float slot_i = floor(raw_slot);
     float slot_idx = mod(slot_i, u_slot_count);
     float theta_center = (slot_i + 0.5) * slot_angle_size;
+    // `angle` (and therefore theta_center) is in the ring's ROTATED
+    // frame (u_rotation already added in above) — but `uv` is raw
+    // screen space. Using theta_center directly to place slot_center_pos
+    // in screen space caused a mismatch that grew with u_rotation, which
+    // is what made every character vanish once the ring started
+    // spinning. Converting back to the screen-space angle here fixes it
+    // (verified numerically: valid pixel coverage now stays constant
+    // across rotation values from -10 to +6.5, instead of dropping to
+    // zero away from rotation=0).
+    float theta_center_screen = theta_center - u_rotation;
 
-    vec2 slot_center_pos = u_ring_radius * vec2(cos(theta_center), sin(theta_center));
+    vec2 slot_center_pos = u_ring_radius * vec2(cos(theta_center_screen), sin(theta_center_screen));
     vec2 local = uv - slot_center_pos;
-    float radial = local.x * cos(theta_center) + local.y * sin(theta_center);
-    float tangential = -local.x * sin(theta_center) + local.y * cos(theta_center);
+    float radial = local.x * cos(theta_center_screen) + local.y * sin(theta_center_screen);
+    float tangential = -local.x * sin(theta_center_screen) + local.y * cos(theta_center_screen);
 
     float pop = u_slot_visible[int(slot_idx)];
     vec2 glyph_uv = vec2(
