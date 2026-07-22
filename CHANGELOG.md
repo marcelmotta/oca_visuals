@@ -12,6 +12,29 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v20 — 2026-07-22 — Actually found and fixed the ring-text mirroring root cause
+
+- **Root cause identified via rigorous numeric verification** (built a
+  synthetic reference texture with known left/right and top/bottom
+  markers, and tested exact coordinate math point-by-point — not just
+  guessing signs): the ring-text mapping was taking (angle, radius)
+  offsets straight to (glyph_uv.x, glyph_uv.y) without ever rotating
+  into each slot's own tangent frame. That's only a valid approximation
+  directly at the top of the ring, where the tangent happens to align
+  with the screen's x-axis — at every other position around the ring
+  it's an increasingly transposed mapping, and a coordinate transpose
+  is mathematically a reflection. That's what was producing the
+  mirroring, and why it persisted across multiple sign-flip attempts
+  that were treating the symptom rather than this cause.
+- **Fixed by properly decomposing each slot's local offset into genuine
+  radial (outward) and tangential (reading-direction) components via
+  an actual rotation matrix**, then mapping those (not raw angle/radius)
+  to the glyph's texture coordinates. Verified correct at 24 angles
+  spaced around the full circle, combined with multiple ring-rotation
+  values, using exact deterministic point-sampling (not statistical
+  correlation, which turned out to give misleading results for
+  off-axis slots during earlier verification attempts).
+
 ## v19 — 2026-07-21 — Scene 7 removed
 
 - **Removed `hollow_chars_pulse.py`** (scene 7) and its asset

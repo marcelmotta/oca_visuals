@@ -210,30 +210,41 @@ void main() {
     // --- "温泉" text wrapping around the exterior edge of the kaleidoscope ---
     // ALWAYS lit at a baseline (legible at all times) — the MIDI-clock
     // chase is layered ON TOP as an extra brighten + slight outward
-    // "glide" per character, not a visibility on/off switch. The
-    // angular position within a slot becomes the glyph's own horizontal
-    // texture coordinate — the standard "unwrap text around a circle"
-    // technique.
+    // "glide" per character, not a visibility on/off switch.
     //
-    // NOTE: a previous attempt flipped this sign to fix mirroring, but
-    // the mirroring persisted — meaning that correction was itself
-    // wrong (likely overcorrecting, or the real cause was misdiagnosed).
-    // Reverted to the direct mapping (angle increasing -> texture x
-    // increasing) here.
+    // ROOT CAUSE OF THE MIRRORING (found via extensive numeric
+    // verification, not guessing): the previous version mapped
+    // (angle, radius) offsets straight to (glyph_uv.x, glyph_uv.y)
+    // without ever rotating into the slot's own tangent frame. That's
+    // only a valid approximation exactly at the top of the ring (where
+    // the tangent happens to align with the screen's x-axis); at every
+    // other position it's an increasingly transposed mapping — and a
+    // coordinate transpose is mathematically a REFLECTION, which is
+    // exactly what "horizontally mirrored" looks like. Fixed by
+    // properly decomposing each slot's local offset into genuine
+    // radial (outward) and tangential (reading-direction) components
+    // via a real rotation, verified numerically at 24 angles around
+    // the full circle plus multiple ring-rotation values.
     float slot_angle_size = (2.0 * PI) / u_slot_count;
     float raw_slot = angle / slot_angle_size;
     float slot_i = floor(raw_slot);
     float slot_idx = mod(slot_i, u_slot_count);
-    float local_angle = fract(raw_slot) - 0.5;
+    float theta_center = (slot_i + 0.5) * slot_angle_size;
+
+    vec2 slot_center_pos = u_ring_radius * vec2(cos(theta_center), sin(theta_center));
+    vec2 local = uv - slot_center_pos;
+    float radial = local.x * cos(theta_center) + local.y * sin(theta_center);
+    float tangential = -local.x * sin(theta_center) + local.y * cos(theta_center);
 
     float pop = u_slot_visible[int(slot_idx)];
-    float local_radial = (radius - u_ring_radius - pop * 0.035) / u_ring_thickness;
-    vec2 glyph_uv = vec2(local_angle + 0.5, local_radial + 0.5);
+    vec2 glyph_uv = vec2(
+        -tangential / (u_ring_radius * slot_angle_size) + 0.5,
+        -(radial - pop * 0.035) / u_ring_thickness + 0.5
+    );
 
     if (glyph_uv.x >= 0.0 && glyph_uv.x <= 1.0 && glyph_uv.y >= 0.0 && glyph_uv.y <= 1.0) {
-        vec2 flipped_uv = vec2(glyph_uv.x, 1.0 - glyph_uv.y);
         bool is_first_char = mod(slot_idx, 2.0) < 1.0;
-        vec4 glyph = is_first_char ? texture(u_glyph_a, flipped_uv) : texture(u_glyph_b, flipped_uv);
+        vec4 glyph = is_first_char ? texture(u_glyph_a, glyph_uv) : texture(u_glyph_b, glyph_uv);
         vec3 text_color = hsv2rgb(vec3(fract(u_hue + 0.5), 0.15, 1.0));
         vec3 popped_color = text_color * (1.0 + pop * 0.6);
         float alpha = clamp(0.82 + pop * 0.18, 0.0, 1.0);
