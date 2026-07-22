@@ -1,29 +1,36 @@
 """
 logo_video_pulse.py
 --------------------
-Scene 5: an exact copy of scene 4 (logo_pulse.py) — same 3D camera-angle
-plane, same background pixel-cloud + per-character particle burst
-(triggered by the "percussion" mapping), same fractal/noise/braid
-background — except the flat PNG logo is replaced with the attached
-spin-loop video (assets/oca_spin_loop_v3.mp4) playing on the plane
-instead.
+Scene: the spin-loop video rendered as a real 3D-projected plane
+(genuine camera-angle perspective, with a subtle glitch effect), over a
+minimal background of just two elements:
 
-VIDEO PLAYBACK APPROACH:
-The video is decoded frame-by-frame with OpenCV and streamed into ONE
-GPU texture that gets overwritten each video frame (`texture.write(...)`)
-— we never hold more than one decoded frame in memory. Frames are read
-in strict sequential order (matching how video codecs are meant to be
-read) and looped by seeking back to frame 0, rather than doing random
-seeks, which keeps playback both correct and cheap.
+1. A translucent, glowing braid of slowly-moving strands across the
+   horizon (a thick "pipe" plus a thin, erratically-wandering sliver of
+   light flowing through it).
+2. A slowly-morphing Julia-set fractal, triggered into bloom by the
+   "pads" channel (10) rather than cycling automatically — two
+   overlapping bloom cells with randomized origins so consecutive
+   blooms vary in position and blend into each other, plus a protected
+   "clear zone" near the center so the fractal never fully covers the
+   area right behind the logo even at peak bloom.
 
-Frame timing is decoupled from render framerate: we accumulate elapsed
-time and only pull a new video frame when a full 1/video_fps has passed,
-so the video plays at its own native speed regardless of the render
-loop's frame rate.
+This is a deliberately minimal version — earlier iterations also had a
+noise-wash background layer and two particle-burst systems (a
+background pixel-cloud and a percussion-triggered per-character burst),
+which were removed to isolate the scene down to just these three
+elements: the braid, the animated/glitching logo, and the fractal
+background.
 
-The video's source frames are the same flat black-background / white
--mark artwork as the PNG (just animated/spinning), so the same
-luminance-based transparency mask from logo_pulse.py works unchanged.
+This file is fully self-contained (previously shared some shader code
+with logo_pulse.py/"scene 4", which has been removed from the project).
+
+MIDI mapping:
+- "keys" channel CC -> hue.
+- "bass" channel CC -> a mild speed influence on the camera tilt.
+- "drums" channel triggers -> a brief camera "punch" (via the shared
+  Camera object) that nudges the logo's tilt.
+- "pads" channel (10) triggers -> starts a new fractal bloom.
 """
 
 import math
@@ -34,72 +41,239 @@ import cv2
 
 from scene_base import Scene
 from utils import make_fullscreen_quad_vao
-from particle_field import ParticleField
-
-# Reuse the exact same background (fractal + noise + braid) and logo-
-# plane shaders as logo_pulse.py, so both scenes share one visual
-# language and only the source imagery differs.
-from scenes.logo_pulse import (
-    BG_VERTEX, BG_FRAGMENT, LOGO_VERTEX, LOGO_FRAGMENT,
-    _perspective_matrix, _rotation_x, _rotation_y, _rotation_z, _translation_z,
-)
+from video_texture import VideoTexture
 
 VIDEO_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "assets", "oca_spin_loop_v3.mp4",
 )
 
-# Downscale decoded frames to at most this many pixels on the long edge
-# before uploading to the GPU — the source video is quite large
-# (1920x2432), and re-uploading a full-resolution frame ~30 times a
-# second is unnecessary bandwidth for a background visual element.
-# Raise this if you want full source sharpness and your GPU/PCIe can
-# keep up; lower it if playback stutters.
 MAX_TEXTURE_DIM = 1024
 
-# Object-space (x, y) centers of the three characters, derived by
-# locating their centroids in the video's own frames (checked across
-# several points in the loop — the three shapes stay in a fixed layout
-# throughout; only detail within them animates) and converting into the
-# same -1..1 object space the quad geometry uses for this plane's aspect
-# ratio (different from the static PNG's, since the video isn't square).
-CHARACTER_ANCHORS = [(-0.420, 0.0), (-0.007, 0.0), (0.416, 0.0)]
+# --- Background pass: braid + fractal only ----------------------------
+
+BG_VERTEX = """
+#version 330
+in vec2 in_position;
+in vec2 in_uv;
+out vec2 v_uv;
+void main() {
+    v_uv = in_uv;
+    gl_Position = vec4(in_position, 0.0, 1.0);
+}
+"""
+
+BG_FRAGMENT = """
+#version 330
+in vec2 v_uv;
+out vec4 f_color;
+
+uniform float u_time;
+uniform float u_hue;
+uniform float u_aspect;
+uniform vec2 u_bloom_origin[2];
+uniform float u_bloom_phase[2];
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+vec3 hsv2rgb(vec3 c) {
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+// A Julia-set fractal, slowly animated by moving its constant `c` around
+// a small circle so the pattern continuously morphs.
+float julia(vec2 z, vec2 c) {
+    const int MAX_ITER = 40;
+    float iter = 0.0;
+    for (int i = 0; i < MAX_ITER; i++) {
+        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+        if (dot(z, z) > 4.0) break;
+        iter += 1.0;
+    }
+    return iter / float(MAX_ITER);
+}
+
+void main() {
+    vec2 uv = v_uv * 2.0 - 1.0;
+    uv.x *= u_aspect;
+
+    vec3 color = vec3(0.0);
+
+    // --- Fractal, with pad-triggered dual bloom cells ---
+    vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));
+    float f = julia(uv * 1.1, julia_c);
+    vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, f * f));
+
+    float bloom_mask = 0.0;
+    for (int i = 0; i < 2; i++) {
+        float cycle = 1.0 - abs(2.0 * u_bloom_phase[i] - 1.0);
+        vec2 rel = uv - u_bloom_origin[i];
+        float dist_sq = dot(rel, rel);
+        float wave_pos = mix(2.3, -0.3, cycle);
+        float mask = smoothstep(wave_pos - 0.9, wave_pos, dist_sq);
+        bloom_mask = max(bloom_mask, mask);
+    }
+    // Protected clear zone near the center so the fractal never fully
+    // covers the area right behind the logo, even at peak bloom.
+    float center_clear = smoothstep(0.12, 0.45, length(uv));
+    color += fractal_color * bloom_mask * center_clear * 0.65;
+
+    // --- Braid: thick "pipe" + thin flowing sliver ---
+    vec3 braid_color = hsv2rgb(vec3(fract(u_hue + 0.55), 0.45, 1.0));
+    vec3 sliver_color = hsv2rgb(vec3(fract(u_hue + 0.05), 0.85, 1.0));
+    float braid = 0.0;
+    float sliver_glow = 0.0;
+    for (int i = 0; i < 3; i++) {
+        float phase = float(i) * 2.094395;
+
+        float strand_y = -0.05
+            + 0.07 * sin(uv.x * 2.6 + u_time * 0.12 + phase)
+            + 0.025 * sin(uv.x * 6.3 - u_time * 0.07 + phase * 1.7);
+        float d = abs(uv.y - strand_y);
+        float pipe_glow = exp(-d * d * 260.0);
+        braid += pipe_glow;
+
+        float wobble = noise(vec2(uv.x * 3.5 + float(i) * 11.0, u_time * 0.35 + phase))
+            + 0.5 * noise(vec2(uv.x * 9.0 - float(i) * 5.0, u_time * 0.6));
+        float sliver_y = strand_y + 0.035 * (wobble - 0.75);
+        float sd = abs(uv.y - sliver_y);
+        float sliver_shape = exp(-sd * sd * 2200.0);
+
+        float travel = smoothstep(0.3, 1.0,
+            sin(uv.x * 4.0 - u_time * (1.2 + float(i) * 0.3) + phase));
+        sliver_glow += sliver_shape * travel;
+    }
+    color += braid_color * braid * 0.45;
+    color += sliver_color * sliver_glow * 0.55;
+
+    f_color = vec4(color, 1.0);
+}
+"""
+
+# --- Video plane pass: real 3D perspective, with glitch --------------
+
+LOGO_VERTEX = """
+#version 330
+in vec3 in_position;
+in vec2 in_uv;
+out vec2 v_uv;
+uniform mat4 u_mvp;
+void main() {
+    v_uv = in_uv;
+    gl_Position = u_mvp * vec4(in_position, 1.0);
+}
+"""
+
+LOGO_FRAGMENT = """
+#version 330
+in vec2 v_uv;
+out vec4 f_color;
+uniform sampler2D u_logo;
+uniform float u_glitch_amount;
+uniform float u_glitch_seed;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+void main() {
+    vec2 uv = v_uv;
+
+    vec3 tex_rgb;
+    if (u_glitch_amount > 0.0) {
+        float band = floor(v_uv.y * 14.0);
+        float band_rand = hash(vec2(band, u_glitch_seed));
+        float tear = step(0.55, band_rand) * (band_rand - 0.5) * 2.0;
+        uv.x += tear * 0.12 * u_glitch_amount;
+
+        float split = 0.012 * u_glitch_amount;
+        float r = texture(u_logo, vec2(uv.x + split, 1.0 - uv.y)).r;
+        float g = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).g;
+        float b = texture(u_logo, vec2(uv.x - split, 1.0 - uv.y)).b;
+        tex_rgb = vec3(r, g, b);
+    } else {
+        tex_rgb = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).rgb;
+    }
+
+    float lum = dot(tex_rgb, vec3(0.299, 0.587, 0.114));
+    float alpha = smoothstep(0.35, 0.55, lum);
+    if (alpha <= 0.01) discard;
+    f_color = vec4(tex_rgb, alpha);
+}
+"""
+
+
+def _perspective_matrix(fovy, aspect, near, far):
+    f = 1.0 / math.tan(fovy / 2.0)
+    return np.array([
+        [f / aspect, 0, 0, 0],
+        [0, f, 0, 0],
+        [0, 0, (far + near) / (near - far), (2 * far * near) / (near - far)],
+        [0, 0, -1, 0],
+    ], dtype="f4")
+
+
+def _rotation_x(angle):
+    c, s = math.cos(angle), math.sin(angle)
+    return np.array([
+        [1, 0, 0, 0],
+        [0, c, -s, 0],
+        [0, s, c, 0],
+        [0, 0, 0, 1],
+    ], dtype="f4")
+
+
+def _rotation_y(angle):
+    c, s = math.cos(angle), math.sin(angle)
+    return np.array([
+        [c, 0, s, 0],
+        [0, 1, 0, 0],
+        [-s, 0, c, 0],
+        [0, 0, 0, 1],
+    ], dtype="f4")
+
+
+def _rotation_z(angle):
+    c, s = math.cos(angle), math.sin(angle)
+    return np.array([
+        [c, -s, 0, 0],
+        [s, c, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1],
+    ], dtype="f4")
+
+
+def _translation_z(dz):
+    m = np.eye(4, dtype="f4")
+    m[2, 3] = dz
+    return m
 
 
 class LogoVideoPulseScene(Scene):
     name = "logo_video_pulse"
 
     def setup(self, ctx):
-        self.cap = cv2.VideoCapture(VIDEO_PATH)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Could not open video file: {VIDEO_PATH}")
+        self.video = VideoTexture(ctx, VIDEO_PATH, max_dim=MAX_TEXTURE_DIM)
 
-        self.video_fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
-        raw_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        raw_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.logo_aspect = raw_w / raw_h
-
-        scale = min(1.0, MAX_TEXTURE_DIM / max(raw_w, raw_h))
-        self.frame_w = max(1, int(raw_w * scale))
-        self.frame_h = max(1, int(raw_h * scale))
-
-        ok, frame = self.cap.read()
-        if not ok:
-            raise RuntimeError("Could not read the first frame of the video")
-        self.texture = ctx.texture((self.frame_w, self.frame_h), 4, self._prepare_frame(frame))
-        self.texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
-
-        self.video_time_accum = 0.0
-        self.frame_duration = 1.0 / self.video_fps
-
-        # --- background pass (identical to logo_pulse.py) ---
         self.bg_program = ctx.program(vertex_shader=BG_VERTEX, fragment_shader=BG_FRAGMENT)
         self.bg_vao = make_fullscreen_quad_vao(ctx, self.bg_program)
 
-        # --- video plane pass (same shader as the logo plane) ---
         self.logo_program = ctx.program(vertex_shader=LOGO_VERTEX, fragment_shader=LOGO_FRAGMENT)
         half_h = 1.0
-        half_w = half_h * self.logo_aspect
+        half_w = half_h * self.video.aspect
         quad = np.array([
             -half_w, -half_h, 0.0,  0.0, 0.0,
              half_w, -half_h, 0.0,  1.0, 0.0,
@@ -116,26 +290,19 @@ class LogoVideoPulseScene(Scene):
         self.fov = math.radians(50)
         self.distance = half_h / math.tan(self.fov / 2.0)
 
-        self.particles = ParticleField(ctx, max_particles=3000)
-        self.letter_particles = ParticleField(ctx, max_particles=2000, edge_fade=True)
-
         self.time = 0.0
-        self.pulse = 0.0
         self.camera = None
-        self.letter_trigger_pending = False
 
+        # Random, infrequent, brief glitch.
         self.next_glitch_time = np.random.uniform(10.0, 25.0)
         self.glitch_active_until = 0.0
         self.glitch_seed = 0.0
 
-        # Fractal bloom is MIDI-triggered in this scene (channel 10 /
-        # "pads"), unlike scene 4 where it cycles automatically. Two
-        # cells: when a new pad trigger arrives, the current bloom
-        # shifts into the "previous" cell (which keeps fading out on its
-        # own) while a fresh one starts fading in — so consecutive
-        # triggers blend smoothly into each other instead of the older
-        # one cutting off abruptly. Both start far in the past so
-        # nothing shows until the first real trigger.
+        # Fractal bloom triggered by channel 10 ("pads"). Two cells: a
+        # new trigger shifts the current bloom into a "previous" cell
+        # that keeps fading out on its own while a fresh one (new random
+        # origin) starts fading in, so consecutive triggers blend into
+        # each other instead of cutting off abruptly.
         self.bloom_trigger_duration = 7.0
         self.bloom_cell_start = [-9999.0, -9999.0]
         self.bloom_cell_origin = [self._random_bloom_origin(), self._random_bloom_origin()]
@@ -143,40 +310,13 @@ class LogoVideoPulseScene(Scene):
     def _random_bloom_origin(self):
         return (float(np.random.uniform(-0.55, 0.55)), float(np.random.uniform(-0.45, 0.45)))
 
-    def _prepare_frame(self, frame_bgr):
-        """Resizes a decoded BGR frame and converts it to RGBA bytes."""
-        if (frame_bgr.shape[1], frame_bgr.shape[0]) != (self.frame_w, self.frame_h):
-            frame_bgr = cv2.resize(
-                frame_bgr, (self.frame_w, self.frame_h), interpolation=cv2.INTER_AREA
-            )
-        frame_rgba = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGBA)
-        return np.ascontiguousarray(frame_rgba).tobytes()
-
-    def _advance_video(self, dt):
-        """Pulls exactly as many new video frames as real time has passed,
-        looping back to the start when the video ends."""
-        self.video_time_accum += dt
-        while self.video_time_accum >= self.frame_duration:
-            ok, frame = self.cap.read()
-            if not ok:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                ok, frame = self.cap.read()
-            if ok:
-                self.texture.write(self._prepare_frame(frame))
-            self.video_time_accum -= self.frame_duration
-
     def update(self, dt, midi, camera):
         self.time += dt
         self.camera = camera
-        self._advance_video(dt)
-
-        triggered = bool(midi.role_triggers("drums"))
-        self.pulse = 1.0 if triggered else self.pulse * 0.95
-        self.letter_trigger_pending = bool(midi.role_triggers("percussion"))
+        self.video.update(dt)
 
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
-        self.intensity = 0.3 + midi.role_cc("bass", "intensity", 0.0) * 1.5
 
         if midi.role_triggers("pads"):
             self.bloom_cell_start[1] = self.bloom_cell_start[0]
@@ -195,27 +335,20 @@ class LogoVideoPulseScene(Scene):
             self.glitch_seed = np.random.uniform(0.0, 1000.0)
             self.next_glitch_time = self.glitch_active_until + np.random.uniform(8.0, 18.0)
 
-        if triggered:
-            origin = (np.random.uniform(-0.8, 0.8), np.random.uniform(-0.6, 0.6))
-            self.particles.spawn_burst(
-                origin=origin, hue=(self.hue + 0.5) % 1.0, n=350,
-                speed_range=(0.4, 1.2), life_range=(2.0, 4.0), sat=0.9,
-            )
-        self.particles.update(dt)
-        self.letter_particles.update(dt)
-
     def render(self, target):
         ctx = self.ctx
         target.use()
         cam = self.camera
 
-        # Plane transform, computed FIRST because the glow-pulse spawn
-        # below needs it to know where each character currently sits on
-        # screen, and the background pass needs the resulting pulse data.
+        self.bg_program["u_time"] = self.time
+        self.bg_program["u_hue"] = self.hue
+        self.bg_program["u_aspect"] = target.size[0] / target.size[1]
+        self.bg_program["u_bloom_origin"] = self.bloom_cell_origin
+        self.bg_program["u_bloom_phase"] = self.bloom_cell_phase
+        self.bg_vao.render(moderngl.TRIANGLES)
+
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
-        # Punch-driven "pulse" on hits reduced substantially (was 0.55
-        # /0.35) — should read as a small, discrete nudge, not a big lurch.
         yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.12
         pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
         roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.08
@@ -225,35 +358,9 @@ class LogoVideoPulseScene(Scene):
         model = _rotation_z(roll) @ _rotation_x(pitch) @ _rotation_y(yaw)
         view = _translation_z(-self.distance)
         mvp = proj @ view @ model
-
-        if self.letter_trigger_pending:
-            anchors = np.array(
-                [[x, y, 0.0, 1.0] for x, y in CHARACTER_ANCHORS], dtype="f4"
-            )
-            clip = (mvp @ anchors.T).T
-            ndc = clip[:, :2] / clip[:, 3:4]
-            for i, (nx, ny) in enumerate(ndc):
-                char_hue = (self.hue + i / 3.0) % 1.0
-                self.letter_particles.spawn_burst(
-                    origin=(float(nx), float(ny)), hue=char_hue, n=45,
-                    speed_range=(0.12, 0.35), life_range=(2.0, 3.5), sat=0.55,
-                )
-            self.letter_trigger_pending = False
-
-        self.bg_program["u_time"] = self.time
-        self.bg_program["u_hue"] = self.hue
-        self.bg_program["u_intensity"] = self.intensity
-        self.bg_program["u_bloom_origin"] = self.bloom_cell_origin
-        self.bg_program["u_bloom_phase"] = self.bloom_cell_phase
-        self.bg_program["u_aspect"] = target.size[0] / target.size[1]
-        self.bg_vao.render(moderngl.TRIANGLES)
-
-        self.particles.render()
-        self.letter_particles.render()
-
         mvp_col_major = mvp.T.astype("f4").copy()
 
-        self.texture.use(location=0)
+        self.video.texture.use(location=0)
         self.logo_program["u_logo"] = 0
         self.logo_program["u_mvp"].write(mvp_col_major.tobytes())
         glitch_active = self.time < self.glitch_active_until
@@ -266,5 +373,4 @@ class LogoVideoPulseScene(Scene):
         ctx.disable(moderngl.BLEND)
 
     def teardown(self):
-        if self.cap is not None:
-            self.cap.release()
+        self.video.release()

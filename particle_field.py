@@ -3,9 +3,8 @@ particle_field.py
 ------------------
 A small, self-contained point-cloud burst system that any scene can
 embed on top of its own rendering — not a full Scene itself, just a
-reusable "spawn a burst of glowing points" object. Used by
-logo_pulse.py to add a particle burst every time the logo scene
-receives a trigger.
+reusable "spawn a burst of glowing points" object. Currently used by
+kaleidoscope_video.py for the drifting sakura petal accents.
 
 (particle_burst.py, the full scene, has its own more elaborate particle
 system with persistent trail buffers and depth layers — this is a

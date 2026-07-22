@@ -12,6 +12,32 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v29 — 2026-07-22 — Scene 4 removed, scene 5 stripped down to 3 elements, wider particle bursts
+
+- **Scene 1 — burst origins widened toward the screen edges.** Bursts
+  were clustering toward the center (origin ranges were only ±0.6/±0.8
+  out of the full ±1.0 screen extent); widened to ±0.85-0.95 for a
+  fuller "landscape" spread. Note: the continuous ambient background
+  particles already used the full range — this only affects the
+  discrete per-hit bursts.
+- **Scene 4 ("logo_pulse") removed entirely.** Scenes renumbered to
+  close the gap: what was scene 5 (`logo_video_pulse`) is now scene 4,
+  and what was scene 6 (`kaleidoscope_video`) is now scene 5.
+  Program-change/key mappings updated accordingly (0-4 instead of 0-5).
+- **Scene 5 (formerly 6... see above, formerly "scene 5" in
+  conversation, `logo_video_pulse.py`) isolated down to exactly 3
+  elements**, per feedback that a persistent "triggered blur" issue
+  remained even after the v28 fix: 1) the braid (thick pipe + thin
+  flowing sliver), 2) the animated video plane with its glitch effect,
+  and 3) the fractal background (pad-triggered, with the v28 center
+  -clear fix retained). Removed: the noise-wash background layer, the
+  background pixel-cloud particle burst, and the percussion-triggered
+  per-character letter burst. The file is now fully self-contained
+  (previously shared shader code with the now-deleted logo_pulse.py).
+  This was as much a simplification as a targeted fix — with fewer
+  simultaneous effects, whatever was still causing the residual blur
+  no longer has as many places to hide.
+
 ## v28 — 2026-07-22 — Fixed fractal bloom obscuring the logo's center (scenes 4 & 5)
 
 - **Found the actual cause of the reported "blur blocking the center"

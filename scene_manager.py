@@ -21,7 +21,6 @@ from config import SCENE_PROGRAM_MAP, CROSSFADE_DURATION, DEFAULT_SCENE
 from scenes.particle_burst import ParticleBurstScene
 from scenes.feedback_trails import FeedbackTrailsScene
 from scenes.noise_field import NoiseFieldScene
-from scenes.logo_pulse import LogoPulseScene
 from scenes.logo_video_pulse import LogoVideoPulseScene
 from scenes.kaleidoscope_video import KaleidoscopeVideoScene
 
@@ -29,7 +28,6 @@ SCENE_CLASSES = {
     "particle_burst": ParticleBurstScene,
     "feedback_trails": FeedbackTrailsScene,
     "noise_field": NoiseFieldScene,
-    "logo_pulse": LogoPulseScene,
     "logo_video_pulse": LogoVideoPulseScene,
     "kaleidoscope_video": KaleidoscopeVideoScene,
 }

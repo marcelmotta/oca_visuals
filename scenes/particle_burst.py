@@ -312,14 +312,16 @@ class ParticleBurstScene(Scene):
                 if style["position"] == "note":
                     span = max(TRIGGER_NOTE_HIGH - TRIGGER_NOTE_LOW, 1)
                     frac = np.clip((note - TRIGGER_NOTE_LOW) / span, 0.0, 1.0)
-                    origin_x = (frac * 2.0 - 1.0) * 0.8
+                    origin_x = (frac * 2.0 - 1.0) * 0.95
                 else:
-                    origin_x = np.random.uniform(-0.6, 0.6)
+                    origin_x = np.random.uniform(-0.95, 0.95)
                 # Y and Z are now randomized per pop too (previously Y
                 # was always 0 and Z only varied per-particle around a
                 # fixed band) — each pop now genuinely starts from a
-                # different point across all three axes.
-                origin_y = np.random.uniform(-0.6, 0.6)
+                # different point across all three axes. Widened toward
+                # the screen edges (was +-0.6) so bursts reach further
+                # out instead of clustering toward the center.
+                origin_y = np.random.uniform(-0.85, 0.85)
                 origin_z = np.random.uniform(-0.2, 1.0)
                 self._spawn_burst(
                     (origin_x, origin_y, origin_z), style["hue"], n=style["n"],

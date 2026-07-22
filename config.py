@@ -42,7 +42,7 @@ CURSOR_IDLE_HIDE_SECONDS = 2.0
 # see dropped frames at 4K on older/integrated graphics, the simplest
 # fix is running at your display's next resolution down, or lowering
 # MAX_ITER in the fractal shaders (search for "MAX_ITER" in
-# scenes/logo_pulse.py). The particle/feedback "work_size" framebuffers
+# scenes/logo_video_pulse.py). The particle/feedback "work_size" framebuffers
 # used internally by a few scenes are already fixed at 1280x720
 # regardless of output resolution, which keeps their cost constant.
 
@@ -126,9 +126,8 @@ SCENE_PROGRAM_MAP = {
     0: "particle_burst",
     1: "feedback_trails",
     2: "noise_field",
-    3: "logo_pulse",
-    4: "logo_video_pulse",
-    5: "kaleidoscope_video",
+    3: "logo_video_pulse",
+    4: "kaleidoscope_video",
 }
 
 # How long a crossfade between scenes takes, in seconds.

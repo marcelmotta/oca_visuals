@@ -50,7 +50,7 @@ python3 main.py
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
   bursts/pulses depending on the active scene; CC1, CC74, CC71, CC7
   control color/intensity/trail-length/brightness; program-change
-  messages (0-5) switch scenes with a 2-second crossfade.
+  messages (0-4) switch scenes with a 2-second crossfade.
 
 ### Per-channel routing
 
@@ -84,15 +84,13 @@ mapping and are now deliberately kept separate) — adjust
 | `camera.py` | Shared virtual camera — automated pan/zoom/rotation driven by MIDI triggers and detected tempo |
 | `video_texture.py` | Shared video-frame streaming helper, used by every scene that displays the spin-loop video |
 | `hollow_logo.py` | Centered white outline-only logo overlay, used by scenes 1-3 |
-| `particle_field.py` | Reusable point-cloud burst effect, embeddable in any scene (used by `logo_pulse.py` and `logo_video_pulse.py`) |
+| `particle_field.py` | Reusable point-cloud burst effect, embeddable in any scene (used by `kaleidoscope_video.py`) |
 | `scenes/particle_burst.py` | House-of-Cards-style point cloud: high density, per-instrument-channel color, erratic fade-out, camera parallax |
 | `scenes/feedback_trails.py` | Smoky feedback-loop trails: soft multi-tap blur, slow dual bg/fg blobs, long release |
 | `scenes/noise_field.py` | Breathing organic noise field: layered bg/fg noise planes, long ripple sustain, camera parallax |
-| `scenes/logo_pulse.py` | Oca Collective logo as a real 3D-projected plane, with a particle burst on every trigger, a glowing braid, and a fractal layer in the background |
-| `scenes/logo_video_pulse.py` | Same as `logo_pulse.py`, but the plane plays the spin-loop video instead of the static PNG |
+| `scenes/logo_video_pulse.py` | The spin-loop video as a real 3D-projected plane with a subtle glitch effect, over a minimal background of just a glowing braid and a pad-triggered fractal — deliberately isolated to these 3 elements |
 | `scenes/kaleidoscope_video.py` | The spin-loop video through a mirrored kaleidoscope, with seigaiha waves, asanoha lattice, drifting sakura petals, a gold mandala ring, and "温泉" characters that pop in sequence around the boundary, timed to MIDI Clock |
 | `assets/onsen1.png`, `assets/onsen2.png` | Individual "温" / "泉" glyph textures used by `kaleidoscope_video.py` |
-| `assets/oca_logo.png` | Source logo artwork used by `logo_pulse.py` |
 | `assets/oca_spin_loop_v3.mp4` | Source video used by `logo_video_pulse.py` |
 
 ### What changed in this pass
