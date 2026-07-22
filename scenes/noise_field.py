@@ -71,6 +71,49 @@ vec3 hsv2rgb(vec3 c) {
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
+// Ripple constants shared between the displacement (refraction) and
+// the specular highlight below.
+const float RIPPLE_MAX_AGE = 2.2;
+const float RIPPLE_SPEED = 0.55;
+const float RIPPLE_MAX_RADIUS = 0.5;
+const float RIPPLE_WAVE_FREQ = 55.0;   // how many ripple bands trail the leading edge
+const float RIPPLE_DECAY_RATE = 10.0;  // how fast those bands die out away from the leading edge
+
+// Returns (dx, dy, specular) for a given screen position: dx/dy is how
+// much to displace the SAMPLING coordinate at this pixel (this is what
+// makes the background/foreground pattern visibly warp/refract, as if
+// seen through a disturbed water surface rather than just drawing a
+// ring on top of it), and `specular` is a bright highlight amount for
+// where light would catch the ripple's slope.
+vec3 rippleWarp(vec2 pos) {
+    vec2 total_offset = vec2(0.0);
+    float specular = 0.0;
+    for (int i = 0; i < 8; i++) {
+        float age = u_pulse_age[i];
+        if (age < RIPPLE_MAX_AGE) {
+            vec2 center = vec2(u_pulse_pos[i].x * u_aspect, u_pulse_pos[i].y);
+            vec2 delta = pos - center;
+            float d = length(delta) + 1e-5;
+            vec2 dir = delta / d;
+            float leading_edge = age * RIPPLE_SPEED;
+
+            float dist_env = 1.0 - smoothstep(0.0, RIPPLE_MAX_RADIUS, leading_edge);
+            float time_env = 1.0 - smoothstep(0.0, RIPPLE_MAX_AGE, age);
+            float envelope = dist_env * time_env;
+
+            // A decaying oscillation trailing the leading edge — this is
+            // the actual "ripple shape" (several bands right behind the
+            // impact point, fading out toward the center).
+            float rel = d - leading_edge;
+            float wave = sin(rel * RIPPLE_WAVE_FREQ) * exp(-abs(rel) * RIPPLE_DECAY_RATE);
+
+            total_offset += dir * wave * envelope * 0.028;
+            specular += abs(wave) * envelope;
+        }
+    }
+    return vec3(total_offset, specular);
+}
+
 // Applies the shared camera (rotate/pan only — NOT zoom) to a uv,
 // scaled by a per-layer parallax factor (0 = distant/background, 1 =
 // near/foreground). Zoom is intentionally excluded entirely: it's the
@@ -91,10 +134,18 @@ void main() {
     // screen that isn't exactly square (i.e. virtually all of them).
     base_uv.x *= u_aspect;
 
+    // Ripples now WARP the sampling coordinate itself — like looking
+    // through a disturbed water surface at the noise pattern underneath
+    // — rather than drawing a colored ring on top of it. Applied before
+    // the camera transform so the warp stays fixed to screen position
+    // regardless of the (subtle) camera pan/rotation.
+    vec3 ripple = rippleWarp(base_uv);
+    vec2 warped_uv = base_uv + ripple.xy;
+
     // --- Background layer: slow, large-scale, low parallax ---
     // Time multipliers halved from before (0.06/0.05/0.02 -> 0.03
     // /0.025/0.01) — the back-and-forth flow was moving too fast.
-    vec2 bg_uv = applyCamera(base_uv, 0.35);
+    vec2 bg_uv = applyCamera(warped_uv, 0.35);
     vec2 bg_warp = vec2(
         noise(bg_uv * 0.8 + u_time * u_speed * 0.03),
         noise(bg_uv * 0.8 - u_time * u_speed * 0.025 + 4.2)
@@ -104,7 +155,7 @@ void main() {
     vec3 bg_color = hsv2rgb(vec3(bg_hue, 0.6, 0.18 + 0.30 * bg_n));
 
     // --- Foreground layer: faster, finer detail, full parallax ---
-    vec2 fg_uv = applyCamera(base_uv, 1.0);
+    vec2 fg_uv = applyCamera(warped_uv, 1.0);
     vec2 fg_warp = vec2(
         noise(fg_uv * 2.2 + u_time * u_speed * 0.16),
         noise(fg_uv * 2.2 - u_time * u_speed * 0.13 + 1.7)
@@ -116,40 +167,10 @@ void main() {
 
     vec3 color = mix(bg_color, fg_color, 0.5);
 
-    // Ripples: a "droplet" primary ring followed by two smaller, fainter
-    // trailing rings (like a real droplet hitting water), with faster
-    // decay than before and a hard distance-based falloff so it visibly
-    // dissipates after spreading a certain distance, not just over time.
-    const float RIPPLE_MAX_AGE = 1.8;     // faster decay (was 4.0)
-    const float RIPPLE_SPEED = 0.55;      // how fast the ring expands
-    const float RIPPLE_MAX_RADIUS = 0.5;  // fully faded by the time it spreads this far
-    for (int i = 0; i < 8; i++) {
-        float age = u_pulse_age[i];
-        if (age < RIPPLE_MAX_AGE) {
-            vec2 pulse_pos_corrected = vec2(u_pulse_pos[i].x * u_aspect, u_pulse_pos[i].y);
-            float d = length(base_uv - pulse_pos_corrected);
-            float primary_radius = age * RIPPLE_SPEED;
-
-            float primary_ring = smoothstep(0.045, 0.0, abs(d - primary_radius));
-            float trail1_radius = max(primary_radius - 0.09, 0.0);
-            float trail1_ring = smoothstep(0.03, 0.0, abs(d - trail1_radius)) * 0.5;
-            float trail2_radius = max(primary_radius - 0.17, 0.0);
-            float trail2_ring = smoothstep(0.025, 0.0, abs(d - trail2_radius)) * 0.28;
-            float ring = primary_ring + trail1_ring + trail2_ring;
-
-            // Decay is the PRODUCT of a time envelope and a distance
-            // envelope — the ring visibly dies out once it's spread
-            // RIPPLE_MAX_RADIUS away from its origin, like real ripples
-            // losing energy as they expand, rather than just fading
-            // uniformly over a fixed duration regardless of size.
-            float time_envelope = 1.0 - smoothstep(0.0, RIPPLE_MAX_AGE, age);
-            float distance_envelope = 1.0 - smoothstep(0.0, RIPPLE_MAX_RADIUS, primary_radius);
-            float envelope = time_envelope * distance_envelope;
-
-            vec3 ring_color = hsv2rgb(vec3(fract(u_hue + 0.5), 0.6, 1.0));
-            color += ring_color * ring * envelope * 0.45;
-        }
-    }
+    // A subtle bright/dark sheen where the ripple's slope is steepest —
+    // like light catching the surface of moving water — on top of the
+    // warped pattern rather than a separate drawn ring.
+    color += vec3(1.0) * ripple.z * 0.12;
 
     f_color = vec4(color * u_brightness, 1.0);
 }

@@ -12,6 +12,21 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v26 — 2026-07-22 — Scene 3: ripples now refract the background instead of drawing a ring on top
+
+- **Reworked ripples into a genuine refraction effect.** Instead of an
+  additive colored ring drawn over the noise field, each ripple now
+  computes a small displacement (a decaying oscillation trailing the
+  leading edge — several bands, like real water) that WARPS the
+  sampling coordinate used for the background/foreground noise layers
+  themselves. The underlying pattern visibly distorts as a ripple
+  passes through it, as if seen through a disturbed water surface with
+  the noise field as the bottom surface beneath it, plus a subtle
+  bright/dark sheen at the ripple's steepest point rather than a flat
+  colored ring. Verified numerically: displacement peaks at a modest
+  ~2% of screen half-width right at the leading edge, decaying over
+  several oscillations behind it — a real warp, not an extreme one.
+
 ## v25 — 2026-07-22 — Scene 3: no more MIDI-linked pulsation, slower background, droplet-style ripples
 
 - **Camera zoom removed entirely from scene 3's background/foreground
