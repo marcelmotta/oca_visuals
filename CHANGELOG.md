@@ -12,6 +12,11 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v23 — 2026-07-22 — Thinner hollow logo outline
+
+- **Reduced `OUTLINE_THICKNESS`** in `hollow_logo.py` by 30% (0.012 ->
+  0.0084) per feedback that the outline on scenes 1-3 read too thick.
+
 ## v22 — 2026-07-22 — White hollow-outline logo added to scenes 1-3
 
 - **Factored out shared `video_texture.py`** — the video-frame-streaming

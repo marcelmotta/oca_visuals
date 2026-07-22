@@ -30,7 +30,8 @@ DISPLAY_HALF_HEIGHT = 0.55
 
 # Outline thickness in the same uv units. Kept small for a crisp,
 # visible-but-not-heavy line — tune this if it looks too thick/thin.
-OUTLINE_THICKNESS = 0.012
+# (Reduced 30% from the original 0.012 per feedback that it read too thick.)
+OUTLINE_THICKNESS = 0.0084
 
 VERTEX_SHADER = """
 #version 330
