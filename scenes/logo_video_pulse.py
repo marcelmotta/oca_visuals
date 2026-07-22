@@ -126,10 +126,18 @@ void main() {
         float mask = smoothstep(wave_pos - 0.9, wave_pos, dist_sq);
         bloom_mask = max(bloom_mask, mask);
     }
-    // Protected clear zone near the center so the fractal never fully
-    // covers the area right behind the logo, even at peak bloom.
-    float center_clear = smoothstep(0.12, 0.45, length(uv));
-    color += fractal_color * bloom_mask * center_clear * 0.65;
+    // NOTE: an earlier version added a static radial "clear zone" here
+    // to keep the fractal from fully covering the area behind the logo
+    // at peak bloom. That approach backfired: since `color` starts at
+    // pure black and the fractal is the only thing that can light up
+    // that region, suppressing it there created a permanent black disc
+    // at screen center — reported as "a black blur in the same layer as
+    // the fractal background." Fixed properly by simply capping the
+    // fractal's overall intensity lower (0.65 -> 0.4) instead of
+    // creating an artificial static hole — it still blooms across the
+    // whole screen, just never gets bright/dominant enough to visually
+    // fight with the logo, and there's no fixed dark patch anywhere.
+    color += fractal_color * bloom_mask * 0.4;
 
     // --- Braid: thick "pipe" + thin flowing sliver ---
     vec3 braid_color = hsv2rgb(vec3(fract(u_hue + 0.55), 0.45, 1.0));

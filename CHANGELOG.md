@@ -12,6 +12,32 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v30 — 2026-07-22 — Fixed real aspect-ratio bug (scene 1), removed black-disc artifact (scene 4)
+
+- **Scene 1 — found the actual cause of "confined to a square region."**
+  The vertex shader divides the final x position by `u_aspect` (to keep
+  swirl/burst motion circular rather than elliptical) — but particle
+  spawn positions were chosen in a plain -1..1 range without accounting
+  for that division, so everything ended up confined to a square-
+  looking region in the middle of any widescreen output, exactly as
+  reported. Verified numerically: a spawn position that should reach
+  the true screen edge was only reaching 53% of the way there. Fixed by
+  scaling spawn x-ranges (both ambient particles and burst origins) by
+  the actual aspect ratio, so they correctly reach ~95% of true screen
+  width after the shader's correction — confirmed numerically.
+- **Scene 4 — found and removed the actual cause of the "black blur."**
+  The v28 fix added a static radial "clear zone" to keep the fractal
+  from covering the logo at peak bloom — but since the background
+  starts at pure black and the fractal is the only thing that can light
+  that area up, suppressing it there created a PERMANENT black disc at
+  screen center, in the fractal's own layer specifically (which is
+  exactly what was reported: present in the background/fractal layer,
+  not affecting the braid or logo, since those are computed/drawn
+  separately). Removed the artificial zone entirely and replaced it
+  with a simple, non-artifact-introducing intensity cap (0.65 -> 0.4)
+  — verified numerically that the fractal's contribution is now uniform
+  at every radius during full bloom, with no fixed dark patch anywhere.
+
 ## v29 — 2026-07-22 — Scene 4 removed, scene 5 stripped down to 3 elements, wider particle bursts
 
 - **Scene 1 — burst origins widened toward the screen edges.** Bursts

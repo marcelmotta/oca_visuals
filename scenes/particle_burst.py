@@ -197,6 +197,12 @@ class ParticleBurstScene(Scene):
         self.emit_accum = 0.0
         self.time = 0.0
         self.camera = None
+        # The vertex shader divides x by u_aspect at the very end (to
+        # keep swirl/burst motion circular rather than elliptical) — so
+        # spawn positions need to be scaled by this SAME aspect ratio,
+        # or everything ends up confined to a square-looking region in
+        # the middle of a widescreen output (exactly what was reported).
+        self.aspect = self.work_size[0] / self.work_size[1]
 
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.logo_overlay = HollowLogoOverlay(ctx, project_root)
@@ -214,6 +220,7 @@ class ParticleBurstScene(Scene):
         new_work_size = compute_work_size(width, height)
         if new_work_size != self.work_size:
             self.work_size = new_work_size
+            self.aspect = self.work_size[0] / self.work_size[1]
             self.fbo_a = self._make_fbo(self.ctx)
             self.fbo_b = self._make_fbo(self.ctx)
 
@@ -226,7 +233,14 @@ class ParticleBurstScene(Scene):
         """Background layer: dim, slow, always-on — sits behind bursts."""
         idx = self._next_indices(n)
         self.position[idx] = np.stack([
-            np.random.uniform(-1.0, 1.0, n),
+            # x scaled by aspect: the vertex shader divides the final x
+            # by u_aspect (to keep motion circular, not elliptical), so
+            # positions need to span +-aspect here to actually reach the
+            # true screen edges after that division — otherwise
+            # everything stays confined to a square-looking region in
+            # the middle of a widescreen output (exactly what was
+            # reported).
+            np.random.uniform(-self.aspect, self.aspect, n),
             np.random.uniform(-1.0, 1.0, n),
             np.random.uniform(-1.0, -0.2, n),  # background depth range
         ], axis=-1)
@@ -312,15 +326,15 @@ class ParticleBurstScene(Scene):
                 if style["position"] == "note":
                     span = max(TRIGGER_NOTE_HIGH - TRIGGER_NOTE_LOW, 1)
                     frac = np.clip((note - TRIGGER_NOTE_LOW) / span, 0.0, 1.0)
-                    origin_x = (frac * 2.0 - 1.0) * 0.95
+                    origin_x = (frac * 2.0 - 1.0) * 0.95 * self.aspect
                 else:
-                    origin_x = np.random.uniform(-0.95, 0.95)
+                    origin_x = np.random.uniform(-0.95, 0.95) * self.aspect
                 # Y and Z are now randomized per pop too (previously Y
                 # was always 0 and Z only varied per-particle around a
                 # fixed band) — each pop now genuinely starts from a
-                # different point across all three axes. Widened toward
-                # the screen edges (was +-0.6) so bursts reach further
-                # out instead of clustering toward the center.
+                # different point across all three axes. X is scaled by
+                # aspect for the same reason as the ambient particles
+                # above (the shader divides x by aspect at the end).
                 origin_y = np.random.uniform(-0.85, 0.85)
                 origin_z = np.random.uniform(-0.2, 1.0)
                 self._spawn_burst(
