@@ -74,11 +74,16 @@ vec3 hsv2rgb(vec3 c) {
 
 // Applies the shared camera (rotate/zoom/pan) to a uv, scaled by a
 // per-layer parallax factor (0 = distant/background, 1 = near/foreground).
+// Zoom's deviation from 1.0 is damped (0.4x) so drum-hit "punches" from
+// the shared camera read as a smooth, subtle breathing motion here
+// rather than a sharp pulse — this scene should feel calmer than the
+// more percussive scenes.
 vec2 applyCamera(vec2 uv, float parallax) {
     float ca = cos(u_cam_rot * parallax);
     float sa = sin(u_cam_rot * parallax);
     uv = mat2(ca, -sa, sa, ca) * uv;
-    uv *= mix(1.0, u_cam_zoom, parallax);
+    float damped_zoom = 1.0 + (u_cam_zoom - 1.0) * 0.4;
+    uv *= mix(1.0, damped_zoom, parallax);
     uv -= u_cam_offset * parallax;
     return uv;
 }
@@ -113,16 +118,17 @@ void main() {
 
     vec3 color = mix(bg_color, fg_color, 0.5);
 
-    // Ripples from note triggers — longer sustain, softer falloff.
+    // Ripples: longer sustain, softer/wider falloff, dimmer overall for
+    // a subtler effect (was a sharper, brighter ring).
     for (int i = 0; i < 8; i++) {
         float age = u_pulse_age[i];
         if (age < 4.0) {
             vec2 pulse_pos_corrected = vec2(u_pulse_pos[i].x * u_aspect, u_pulse_pos[i].y);
             float d = length(base_uv - pulse_pos_corrected);
-            float ring = smoothstep(0.10, 0.0, abs(d - age * 0.5));
+            float ring = smoothstep(0.16, 0.0, abs(d - age * 0.5));
             float envelope = 1.0 - smoothstep(0.0, 4.0, age);
             vec3 ring_color = hsv2rgb(vec3(fract(u_hue + 0.5), 0.6, 1.0));
-            color += ring_color * ring * envelope * 0.7;
+            color += ring_color * ring * envelope * 0.4;
         }
     }
 
@@ -145,6 +151,13 @@ class NoiseFieldScene(Scene):
         self.pulse_cursor = 0
         self.camera = None
 
+        # Autonomous "droplets": ripples that pop in on their own at
+        # random screen positions, independent of any MIDI trigger —
+        # restores the ambient droplet effect from an earlier version.
+        # Reuses the same ripple rendering as the MIDI-triggered ones
+        # (now toned down/subtle — see the ring/envelope changes above).
+        self.next_droplet_time = np.random.uniform(1.0, 3.0)
+
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.logo_overlay = HollowLogoOverlay(ctx, project_root)
 
@@ -162,10 +175,20 @@ class NoiseFieldScene(Scene):
             self.pulse_age[i] = 0.0
             self.pulse_cursor = (self.pulse_cursor + 1) % MAX_PULSES
 
+        # Autonomous droplets: random position anywhere on screen, on a
+        # random timer, independent of MIDI — subtle ambient life in the
+        # background even with no input.
+        if self.time >= self.next_droplet_time:
+            i = self.pulse_cursor
+            self.pulse_pos[i] = [np.random.uniform(-1.0, 1.0), np.random.uniform(-1.0, 1.0)]
+            self.pulse_age[i] = 0.0
+            self.pulse_cursor = (self.pulse_cursor + 1) % MAX_PULSES
+            self.next_droplet_time = self.time + np.random.uniform(1.5, 4.0)
+
         self.speed = 0.3 + midi.role_cc("bass", "intensity", 0.0) * 2.0
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
-        self.brightness = 0.5 + midi.role_cc("drums", "master_brightness", 0.8) * 1.0
+        self.brightness = 0.75 + midi.role_cc("drums", "master_brightness", 0.8) * 0.5
 
     def render(self, target):
         target.use()

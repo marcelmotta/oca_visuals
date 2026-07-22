@@ -12,6 +12,18 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v24 — 2026-07-22 — Scene 3: smoother/subtler pulse, restored autonomous droplets
+
+- **Smoothed several sources of "pulse" in scene 3**: the shared
+  camera's zoom punch (from drum hits) is now damped to 40% of its
+  previous influence here; the ripple ring itself is wider/softer and
+  dimmer (0.7 -> 0.4 weight); the "drums" channel's brightness CC now
+  swings a much narrower 0.75-1.25 range instead of 0.5-1.5.
+- **Restored autonomous droplets/ripples** that pop in on their own at
+  random screen positions on a random timer (independent of any MIDI
+  input), reusing the same (now subtler) ripple rendering — ambient
+  background life even with no input.
+
 ## v23 — 2026-07-22 — Thinner hollow logo outline
 
 - **Reduced `OUTLINE_THICKNESS`** in `hollow_logo.py` by 30% (0.012 ->
