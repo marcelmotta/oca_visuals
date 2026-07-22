@@ -12,6 +12,24 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v25 — 2026-07-22 — Scene 3: no more MIDI-linked pulsation, slower background, droplet-style ripples
+
+- **Camera zoom removed entirely from scene 3's background/foreground
+  layers** (was damped to 40% in v24, evidently still noticeable) —
+  only rotate/pan remain, so the scene no longer visibly reacts to
+  drum-hit "punches" or tempo-linked breathing at all.
+- **Background layer flow speed halved** — the back-and-forth noise
+  animation was moving too fast; time multipliers cut from
+  0.06/0.05/0.02 to 0.03/0.025/0.01.
+- **Ripples redesigned to look like an actual droplet impact**: a
+  primary ring plus two smaller, fainter trailing rings behind it
+  (rather than one plain ring), faster decay (max age cut from 4s to
+  1.8s), and — the main mechanism now — a genuine distance-based
+  falloff, so the ripple visibly dissipates once it's spread about
+  half the screen's width, rather than fading on a fixed timer
+  regardless of size. Verified numerically: the ripple is fully faded
+  by ~0.9s via the distance falloff, well inside the old 4s duration.
+
 ## v24 — 2026-07-22 — Scene 3: smoother/subtler pulse, restored autonomous droplets
 
 - **Smoothed several sources of "pulse" in scene 3**: the shared

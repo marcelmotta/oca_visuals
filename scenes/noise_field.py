@@ -49,7 +49,6 @@ uniform float u_pulse_age[8];
 
 uniform vec2 u_cam_offset;
 uniform float u_cam_rot;
-uniform float u_cam_zoom;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -72,18 +71,15 @@ vec3 hsv2rgb(vec3 c) {
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
-// Applies the shared camera (rotate/zoom/pan) to a uv, scaled by a
-// per-layer parallax factor (0 = distant/background, 1 = near/foreground).
-// Zoom's deviation from 1.0 is damped (0.4x) so drum-hit "punches" from
-// the shared camera read as a smooth, subtle breathing motion here
-// rather than a sharp pulse — this scene should feel calmer than the
-// more percussive scenes.
+// Applies the shared camera (rotate/pan only — NOT zoom) to a uv,
+// scaled by a per-layer parallax factor (0 = distant/background, 1 =
+// near/foreground). Zoom is intentionally excluded entirely: it's the
+// component tied to drum-hit "punches" and tempo-linked breathing, and
+// this scene should never visibly pulsate in reaction to MIDI triggers.
 vec2 applyCamera(vec2 uv, float parallax) {
     float ca = cos(u_cam_rot * parallax);
     float sa = sin(u_cam_rot * parallax);
     uv = mat2(ca, -sa, sa, ca) * uv;
-    float damped_zoom = 1.0 + (u_cam_zoom - 1.0) * 0.4;
-    uv *= mix(1.0, damped_zoom, parallax);
     uv -= u_cam_offset * parallax;
     return uv;
 }
@@ -96,12 +92,14 @@ void main() {
     base_uv.x *= u_aspect;
 
     // --- Background layer: slow, large-scale, low parallax ---
+    // Time multipliers halved from before (0.06/0.05/0.02 -> 0.03
+    // /0.025/0.01) — the back-and-forth flow was moving too fast.
     vec2 bg_uv = applyCamera(base_uv, 0.35);
     vec2 bg_warp = vec2(
-        noise(bg_uv * 0.8 + u_time * u_speed * 0.06),
-        noise(bg_uv * 0.8 - u_time * u_speed * 0.05 + 4.2)
+        noise(bg_uv * 0.8 + u_time * u_speed * 0.03),
+        noise(bg_uv * 0.8 - u_time * u_speed * 0.025 + 4.2)
     );
-    float bg_n = noise(bg_uv * 1.0 + bg_warp * 1.2 + u_time * u_speed * 0.02);
+    float bg_n = noise(bg_uv * 1.0 + bg_warp * 1.2 + u_time * u_speed * 0.01);
     float bg_hue = fract(u_hue - 0.12 + bg_n * 0.2);
     vec3 bg_color = hsv2rgb(vec3(bg_hue, 0.6, 0.18 + 0.30 * bg_n));
 
@@ -118,17 +116,38 @@ void main() {
 
     vec3 color = mix(bg_color, fg_color, 0.5);
 
-    // Ripples: longer sustain, softer/wider falloff, dimmer overall for
-    // a subtler effect (was a sharper, brighter ring).
+    // Ripples: a "droplet" primary ring followed by two smaller, fainter
+    // trailing rings (like a real droplet hitting water), with faster
+    // decay than before and a hard distance-based falloff so it visibly
+    // dissipates after spreading a certain distance, not just over time.
+    const float RIPPLE_MAX_AGE = 1.8;     // faster decay (was 4.0)
+    const float RIPPLE_SPEED = 0.55;      // how fast the ring expands
+    const float RIPPLE_MAX_RADIUS = 0.5;  // fully faded by the time it spreads this far
     for (int i = 0; i < 8; i++) {
         float age = u_pulse_age[i];
-        if (age < 4.0) {
+        if (age < RIPPLE_MAX_AGE) {
             vec2 pulse_pos_corrected = vec2(u_pulse_pos[i].x * u_aspect, u_pulse_pos[i].y);
             float d = length(base_uv - pulse_pos_corrected);
-            float ring = smoothstep(0.16, 0.0, abs(d - age * 0.5));
-            float envelope = 1.0 - smoothstep(0.0, 4.0, age);
+            float primary_radius = age * RIPPLE_SPEED;
+
+            float primary_ring = smoothstep(0.045, 0.0, abs(d - primary_radius));
+            float trail1_radius = max(primary_radius - 0.09, 0.0);
+            float trail1_ring = smoothstep(0.03, 0.0, abs(d - trail1_radius)) * 0.5;
+            float trail2_radius = max(primary_radius - 0.17, 0.0);
+            float trail2_ring = smoothstep(0.025, 0.0, abs(d - trail2_radius)) * 0.28;
+            float ring = primary_ring + trail1_ring + trail2_ring;
+
+            // Decay is the PRODUCT of a time envelope and a distance
+            // envelope — the ring visibly dies out once it's spread
+            // RIPPLE_MAX_RADIUS away from its origin, like real ripples
+            // losing energy as they expand, rather than just fading
+            // uniformly over a fixed duration regardless of size.
+            float time_envelope = 1.0 - smoothstep(0.0, RIPPLE_MAX_AGE, age);
+            float distance_envelope = 1.0 - smoothstep(0.0, RIPPLE_MAX_RADIUS, primary_radius);
+            float envelope = time_envelope * distance_envelope;
+
             vec3 ring_color = hsv2rgb(vec3(fract(u_hue + 0.5), 0.6, 1.0));
-            color += ring_color * ring * envelope * 0.4;
+            color += ring_color * ring * envelope * 0.45;
         }
     }
 
@@ -203,7 +222,6 @@ class NoiseFieldScene(Scene):
         cam = self.camera
         self.program["u_cam_offset"] = tuple(cam.offset) if cam else (0.0, 0.0)
         self.program["u_cam_rot"] = cam.rotation if cam else 0.0
-        self.program["u_cam_zoom"] = cam.zoom if cam else 1.0
         self.vao.render(moderngl.TRIANGLES)
 
         self.logo_overlay.render(target)
