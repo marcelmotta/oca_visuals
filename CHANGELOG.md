@@ -12,6 +12,26 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v22 — 2026-07-22 — White hollow-outline logo added to scenes 1-3
+
+- **Factored out shared `video_texture.py`** — the video-frame-streaming
+  logic (open capture, decode/resize frames, advance at native
+  playback speed) was duplicated across scenes 5 and 6; now shared by
+  all five scenes that use the video.
+- **New `hollow_logo.py`**: a centered, white OUTLINE-ONLY rendering of
+  the spin-loop video logo (edges only, not filled) — samples a binary
+  inside/outside mask at each pixel plus a ring of samples around it at
+  a small radius; if any disagree with the center, that pixel is near a
+  boundary and drawn white, everything else discarded. Verified
+  numerically on an actual video frame that this produces a thin,
+  non-degenerate boundary (not solid, not empty).
+- **Added to scenes 1-3** (`particle_burst`, `feedback_trails`,
+  `noise_field`) as a final overlay pass on top of each scene's own
+  content — kept deliberately simple (flat, centered, no 3D tilt),
+  unlike the full solid/3D treatment in scenes 4 and 5, so it doesn't
+  compete with what's already a busy scene. Outline thickness and
+  display size are tunable constants in `hollow_logo.py`.
+
 ## v21 — 2026-07-22 — Fixed a second, distinct bug: rotation made all characters vanish
 
 - **The v20 fix introduced a real regression**: `theta_center` is

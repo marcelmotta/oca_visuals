@@ -13,11 +13,13 @@ Breathing organic color field, now with:
   parallax), so perspective is always drifting rather than static.
 """
 
+import os
 import numpy as np
 import moderngl
 
 from scene_base import Scene
 from utils import make_fullscreen_quad_vao
+from hollow_logo import HollowLogoOverlay
 
 MAX_PULSES = 8
 
@@ -143,10 +145,14 @@ class NoiseFieldScene(Scene):
         self.pulse_cursor = 0
         self.camera = None
 
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.logo_overlay = HollowLogoOverlay(ctx, project_root)
+
     def update(self, dt, midi, camera):
         self.time += dt
         self.pulse_age += dt
         self.camera = camera
+        self.logo_overlay.update(dt)
 
         for note in midi.role_triggers("texture"):
             x = ((note % 12) / 12.0) * 2.0 - 1.0
@@ -176,3 +182,8 @@ class NoiseFieldScene(Scene):
         self.program["u_cam_rot"] = cam.rotation if cam else 0.0
         self.program["u_cam_zoom"] = cam.zoom if cam else 1.0
         self.vao.render(moderngl.TRIANGLES)
+
+        self.logo_overlay.render(target)
+
+    def teardown(self):
+        self.logo_overlay.release()

@@ -14,11 +14,13 @@ Smoky video-feedback trails, now with:
 """
 
 import math
+import os
 import numpy as np
 import moderngl
 
 from scene_base import Scene
 from utils import make_fullscreen_quad_vao, hsv_to_rgb_np, compute_work_size
+from hollow_logo import HollowLogoOverlay
 
 FEEDBACK_VERTEX = """
 #version 330
@@ -148,6 +150,9 @@ class FeedbackTrailsScene(Scene):
         self.pulse = 0.0
         self.camera = None
 
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.logo_overlay = HollowLogoOverlay(ctx, project_root)
+
     def _make_fbo(self, ctx):
         tex = ctx.texture(self.work_size, 4)
         tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
@@ -167,6 +172,7 @@ class FeedbackTrailsScene(Scene):
     def update(self, dt, midi, camera):
         self.time += dt
         self.camera = camera
+        self.logo_overlay.update(dt)
 
         intensity = 0.2 + midi.role_cc("bass", "intensity", 0.0) * 0.7
 
@@ -237,3 +243,8 @@ class FeedbackTrailsScene(Scene):
         self.blit_vao.render(moderngl.TRIANGLES)
 
         self.reading_from_a = not self.reading_from_a
+
+        self.logo_overlay.render(target)
+
+    def teardown(self):
+        self.logo_overlay.release()

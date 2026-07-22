@@ -82,6 +82,8 @@ mapping and are now deliberately kept separate) — adjust
 | `scene_manager.py` | Switches/crossfades between scenes |
 | `main.py` | Window + main loop — what you actually run |
 | `camera.py` | Shared virtual camera — automated pan/zoom/rotation driven by MIDI triggers and detected tempo |
+| `video_texture.py` | Shared video-frame streaming helper, used by every scene that displays the spin-loop video |
+| `hollow_logo.py` | Centered white outline-only logo overlay, used by scenes 1-3 |
 | `particle_field.py` | Reusable point-cloud burst effect, embeddable in any scene (used by `logo_pulse.py` and `logo_video_pulse.py`) |
 | `scenes/particle_burst.py` | House-of-Cards-style point cloud: high density, per-instrument-channel color, erratic fade-out, camera parallax |
 | `scenes/feedback_trails.py` | Smoky feedback-loop trails: soft multi-tap blur, slow dual bg/fg blobs, long release |
