@@ -44,6 +44,19 @@ know what a version contains).
   positions, since this artwork's internal layout hasn't been analyzed
   the way the OCA logo's three circles were.
 
+## v18 — 2026-07-21 — Fixed horizontally mirrored ring characters
+
+- **Scene 6 — fixed character mirroring.** The "unwrap text around a
+  circle" technique mapped the angular sweep direction straight to the
+  glyph texture's horizontal coordinate — this is equivalent to
+  wrapping a printed strip around a cylinder with the printed side
+  facing inward instead of outward, so every character came out
+  mirrored left-right from the normal outside viewpoint. Fixed by
+  flipping the within-slot horizontal sampling direction; which slot
+  each character occupies (and the MIDI-clock pop-chase ordering) is
+  unaffected — only the read direction within each character's own
+  glyph changed.
+
 ## v17 — 2026-07-21 — Recovery: v12-v15 work restored after silent data loss
 
 **What happened:** while implementing the v16 cursor fix, discovered

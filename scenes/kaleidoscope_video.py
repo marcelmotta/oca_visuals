@@ -212,14 +212,22 @@ void main() {
     // chase is layered ON TOP as an extra brighten + slight outward
     // "glide" per character, not a visibility on/off switch. The
     // angular position within a slot becomes the glyph's own horizontal
-    // texture coordinate directly — the standard "unwrap text around a
-    // circle" technique, keeping every character correctly oriented by
-    // construction.
+    // texture coordinate — the standard "unwrap text around a circle"
+    // technique.
+    //
+    // IMPORTANT: the x-direction of that unwrap has to run OPPOSITE to
+    // the angle's own increasing direction, not the same way. Mapping
+    // "angle increasing" straight to "texture x increasing" is
+    // equivalent to wrapping a printed strip around a cylinder with the
+    // printed side facing inward instead of outward — from the normal
+    // outside viewpoint every character comes out mirrored left-right,
+    // which is exactly the bug this fixes (slot assignment itself is
+    // unaffected, only which end of each slot's texture we start from).
     float slot_angle_size = (2.0 * PI) / u_slot_count;
     float raw_slot = angle / slot_angle_size;
     float slot_i = floor(raw_slot);
     float slot_idx = mod(slot_i, u_slot_count);
-    float local_angle = fract(raw_slot) - 0.5;
+    float local_angle = 0.5 - fract(raw_slot);
 
     float pop = u_slot_visible[int(slot_idx)];
     float local_radial = (radius - u_ring_radius - pop * 0.035) / u_ring_thickness;
