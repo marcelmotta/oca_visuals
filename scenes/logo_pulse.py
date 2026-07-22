@@ -248,7 +248,7 @@ void main() {
         float tear = step(0.55, band_rand) * (band_rand - 0.5) * 2.0; // 0, or -1..1
         uv.x += tear * 0.12 * u_glitch_amount;
 
-        float split = 0.02 * u_glitch_amount;
+        float split = 0.012 * u_glitch_amount;  // reduced from 0.02 - less vivid color fringing
         float r = texture(u_logo, vec2(uv.x + split, 1.0 - uv.y)).r;
         float g = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).g;
         float b = texture(u_logo, vec2(uv.x - split, 1.0 - uv.y)).b;

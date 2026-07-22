@@ -12,6 +12,31 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v27 — 2026-07-22 — MIDI hot-plug, less vivid glitch, scene 3 ripple tuning + directional shading
+
+- **MIDI hot-plug support.** Previously the MIDI port was only opened
+  once at startup — plugging the SEQTRAK in after launch did nothing
+  until restart. Now retries opening a port every 3 seconds in the
+  background if none is connected (or one disconnects mid-show), via a
+  cheap OS port-list check — negligible CPU cost since it's done every
+  few seconds, not every frame.
+- **Scenes 4 & 5 — glitch color toned down.** Reduced the chromatic
+  (RGB) split amount by 40% (0.02 -> 0.012) for less vivid fringing
+  during the glitch. (Scene 6 doesn't currently have a glitch effect —
+  see note below.)
+- **Scene 3 — fewer secondary ripples, slower expansion.** Retuned the
+  ripple's wave frequency/decay (verified numerically) so it now shows
+  about 2 visible bands (the primary impact + one clear secondary)
+  instead of 4-5, and slowed the expansion speed noticeably (0.55 ->
+  0.35).
+- **Scene 3 — real directional shading added**, replacing the flat
+  brightness bump: the ripple's gradient now builds a fake surface
+  normal, lit by a fixed "parallel light source" direction, giving a
+  genuine bright/dark sheen depending on slope direction (verified
+  numerically: flat areas shade to exactly zero, and different slope
+  directions produce both brighter and darker results, not just a
+  uniform glow) — much closer to real light catching moving water.
+
 ## v26 — 2026-07-22 — Scene 3: ripples now refract the background instead of drawing a ring on top
 
 - **Reworked ripples into a genuine refraction effect.** Instead of an

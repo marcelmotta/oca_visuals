@@ -130,42 +130,50 @@ class MidiState:
         return notes
 
 
-def list_available_ports():
+def list_available_ports(quiet=False):
     """Prints all MIDI input ports currently visible to the OS.
 
     Handy for finding the exact name to put in config.MIDI_PORT_NAME.
+    Pass quiet=True to skip printing (used for periodic hot-plug retries
+    so they don't spam the console every couple seconds).
     """
     ports = mido.get_input_names()
-    print("Available MIDI input ports:")
-    if not ports:
-        print("  (none found — check your MIDI device / IAC driver is on)")
-    for p in ports:
-        print(f"  - {p}")
+    if not quiet:
+        print("Available MIDI input ports:")
+        if not ports:
+            print("  (none found — check your MIDI device / IAC driver is on)")
+        for p in ports:
+            print(f"  - {p}")
     return ports
 
 
-def open_midi_port(state: MidiState):
+def open_midi_port(state: MidiState, quiet=False):
     """Opens a MIDI input port and returns it, or None if none available.
 
     The returned port is non-blocking; call `poll_midi(port, state)` each
     frame in your main loop to drain any pending messages into `state`.
+    Pass quiet=True to suppress the "no ports found" style messages —
+    used for periodic hot-plug retries once the show is already running.
     """
-    ports = list_available_ports()
+    ports = list_available_ports(quiet=quiet)
     port_name = MIDI_PORT_NAME
 
     if port_name is None:
         if not ports:
-            print("No MIDI ports found. Running with no MIDI input for now.")
+            if not quiet:
+                print("No MIDI ports found. Running with no MIDI input for now.")
             return None
         port_name = ports[0]
-        print(f"MIDI_PORT_NAME not set in config.py — defaulting to '{port_name}'")
+        if not quiet:
+            print(f"MIDI_PORT_NAME not set in config.py — defaulting to '{port_name}'")
 
     try:
         port = mido.open_input(port_name)
-        print(f"Opened MIDI port: {port_name}")
+        print(f"Opened MIDI port: {port_name}")  # always announce success, even when quiet
         return port
     except (IOError, OSError) as e:
-        print(f"Could not open MIDI port '{port_name}': {e}")
+        if not quiet:
+            print(f"Could not open MIDI port '{port_name}': {e}")
         return None
 
 
@@ -174,11 +182,22 @@ def poll_midi(port, state: MidiState):
 
     Call this once per frame, right after `state.begin_frame()`.
     Safe to call with `port=None` (does nothing).
+
+    Returns True if the port is still OK, False if it just disconnected
+    (e.g. the device was unplugged) — the caller should discard the
+    port and treat it as None from then on, so hot-plug reconnection
+    logic (see main.py) will pick it back up automatically once it's
+    plugged back in.
     """
     if port is None:
-        return
+        return True
 
-    for msg in port.iter_pending():
+    try:
+        pending = list(port.iter_pending())
+    except (IOError, OSError):
+        return False
+
+    for msg in pending:
         ch = getattr(msg, "channel", None)  # 0-15, or None for sysex/etc.
 
         if MIDI_DEBUG and msg.type != "clock":
@@ -217,3 +236,5 @@ def poll_midi(port, state: MidiState):
 
         elif msg.type == "program_change":
             state.program_change = msg.program
+
+    return True

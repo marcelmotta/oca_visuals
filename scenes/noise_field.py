@@ -72,22 +72,23 @@ vec3 hsv2rgb(vec3 c) {
 }
 
 // Ripple constants shared between the displacement (refraction) and
-// the specular highlight below.
-const float RIPPLE_MAX_AGE = 2.2;
-const float RIPPLE_SPEED = 0.55;
+// the directional shading below.
+const float RIPPLE_MAX_AGE = 2.8;
+const float RIPPLE_SPEED = 0.35;      // slower expansion (was 0.55)
 const float RIPPLE_MAX_RADIUS = 0.5;
-const float RIPPLE_WAVE_FREQ = 55.0;   // how many ripple bands trail the leading edge
-const float RIPPLE_DECAY_RATE = 10.0;  // how fast those bands die out away from the leading edge
+const float RIPPLE_WAVE_FREQ = 25.0;  // fewer trailing bands (was 55 -> ~4-5 bands, now ~2)
+const float RIPPLE_DECAY_RATE = 10.0; // how fast those bands die out away from the leading edge
 
-// Returns (dx, dy, specular) for a given screen position: dx/dy is how
-// much to displace the SAMPLING coordinate at this pixel (this is what
-// makes the background/foreground pattern visibly warp/refract, as if
-// seen through a disturbed water surface rather than just drawing a
-// ring on top of it), and `specular` is a bright highlight amount for
-// where light would catch the ripple's slope.
-vec3 rippleWarp(vec2 pos) {
+// Returns (dx, dy, gradX, gradY): dx/dy is how much to displace the
+// SAMPLING coordinate at this pixel (makes the background/foreground
+// pattern visibly warp/refract, as if seen through a disturbed water
+// surface), and gradX/gradY is the raw (unscaled) directional wave sum,
+// used afterward to build a fake surface normal for directional
+// lighting — like a parallel light source catching the ripple's slope,
+// the way real light refracts/reflects off moving water.
+vec4 rippleWarp(vec2 pos) {
     vec2 total_offset = vec2(0.0);
-    float specular = 0.0;
+    vec2 raw_grad = vec2(0.0);
     for (int i = 0; i < 8; i++) {
         float age = u_pulse_age[i];
         if (age < RIPPLE_MAX_AGE) {
@@ -102,16 +103,17 @@ vec3 rippleWarp(vec2 pos) {
             float envelope = dist_env * time_env;
 
             // A decaying oscillation trailing the leading edge — this is
-            // the actual "ripple shape" (several bands right behind the
-            // impact point, fading out toward the center).
+            // the actual "ripple shape" (now tuned to ~2 bands total:
+            // the primary impact ring plus one clear secondary ripple,
+            // rather than the 4-5 bands from before).
             float rel = d - leading_edge;
             float wave = sin(rel * RIPPLE_WAVE_FREQ) * exp(-abs(rel) * RIPPLE_DECAY_RATE);
 
             total_offset += dir * wave * envelope * 0.028;
-            specular += abs(wave) * envelope;
+            raw_grad += dir * wave * envelope;
         }
     }
-    return vec3(total_offset, specular);
+    return vec4(total_offset, raw_grad);
 }
 
 // Applies the shared camera (rotate/pan only — NOT zoom) to a uv,
@@ -139,7 +141,7 @@ void main() {
     // — rather than drawing a colored ring on top of it. Applied before
     // the camera transform so the warp stays fixed to screen position
     // regardless of the (subtle) camera pan/rotation.
-    vec3 ripple = rippleWarp(base_uv);
+    vec4 ripple = rippleWarp(base_uv);
     vec2 warped_uv = base_uv + ripple.xy;
 
     // --- Background layer: slow, large-scale, low parallax ---
@@ -167,10 +169,18 @@ void main() {
 
     vec3 color = mix(bg_color, fg_color, 0.5);
 
-    // A subtle bright/dark sheen where the ripple's slope is steepest —
-    // like light catching the surface of moving water — on top of the
-    // warped pattern rather than a separate drawn ring.
-    color += vec3(1.0) * ripple.z * 0.12;
+    // Directional ("parallel light source") shading: treat the ripple's
+    // gradient as a fake surface normal and light it like a bump-mapped
+    // surface, rather than a flat brightness bump — this is what
+    // actually reads as light refracting/reflecting off the slope of
+    // moving water, with a bright side facing the light and a slightly
+    // darker side facing away, instead of a uniform glow.
+    vec3 lightDir = normalize(vec3(0.45, 0.55, 0.7));
+    vec3 normal = normalize(vec3(-ripple.zw * 0.6, 1.0));
+    float diffuse = dot(normal, lightDir);
+    float flatDiffuse = lightDir.z;  // dot((0,0,1), lightDir)
+    float shading = (diffuse - flatDiffuse) * 1.4;
+    color += vec3(1.0, 0.98, 0.92) * shading;
 
     f_color = vec4(color * u_brightness, 1.0);
 }

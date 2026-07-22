@@ -10,6 +10,10 @@ live MIDI from Ableton Live and/or the SEQTRAK, and renders whichever
 scene is currently active — crossfading smoothly whenever a MIDI
 program-change message asks for a different one.
 
+MIDI devices can be plugged in at any time, including after the app is
+already running — it retries opening a port every few seconds in the
+background if none is connected yet (or if one disconnects mid-show).
+
 CONTROLS WHILE RUNNING:
 - Press ESC or close the window to quit.
 - Press number keys 1/2/3 to manually switch scenes for testing, even
@@ -132,6 +136,14 @@ def main():
     last_time = time.perf_counter()
     print("Running. Press ESC to quit, or 1/2/3/4/5/6 to switch scenes manually.")
 
+    # MIDI hot-plug: if no device was connected at startup (or one gets
+    # unplugged mid-show), retry opening a port every few seconds rather
+    # than only checking once at launch. This is a cheap check (just
+    # asking the OS for the current port list) done every few seconds,
+    # not every frame, so the added CPU cost is negligible.
+    MIDI_RECONNECT_INTERVAL = 3.0
+    midi_reconnect_timer = 0.0
+
     while not glfw.window_should_close(window):
         glfw.poll_events()
 
@@ -143,7 +155,17 @@ def main():
         dt = min(dt, 1.0 / 15.0)
 
         midi_state.begin_frame()
-        poll_midi(midi_port, midi_state)
+        midi_ok = poll_midi(midi_port, midi_state)
+        if not midi_ok:
+            print("MIDI port disconnected — will keep retrying in the background.")
+            midi_port = None
+
+        if midi_port is None:
+            midi_reconnect_timer += dt
+            if midi_reconnect_timer >= MIDI_RECONNECT_INTERVAL:
+                midi_reconnect_timer = 0.0
+                midi_port = open_midi_port(midi_state, quiet=True)
+
         camera.update(dt, midi_state)
 
         if CURSOR_IDLE_HIDE_SECONDS is not None and not cursor_state["hidden"]:
