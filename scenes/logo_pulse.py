@@ -158,7 +158,18 @@ void main() {
         float mask = smoothstep(wave_pos - 0.9, wave_pos, dist_sq);
         bloom_mask = max(bloom_mask, mask);
     }
-    color += fractal_color * bloom_mask * 0.65;
+    // Keep a "clear zone" near the exact center: at full bloom the mask
+    // above saturates to 1.0 across the ENTIRE screen (dist_sq is always
+    // >= 0), which was letting the fractal completely cover the area
+    // right behind the logo/video plane whenever its black background
+    // shows through (i.e. everywhere except the mark itself) — reported
+    // as "blur blocking the center of the screen" when triggered via
+    // channel 10. This ramps the fractal's contribution from 0 at the
+    // very center up to full strength by radius 0.45, so the logo's
+    // immediate surroundings stay clear regardless of bloom state,
+    // while the fractal can still bloom fully further out.
+    float center_clear = smoothstep(0.12, 0.45, length(uv));
+    color += fractal_color * bloom_mask * center_clear * 0.65;
 
     // Translucent, glowing braid across the horizon: three THICK, soft
     // "pipe" strands on a smooth, slow, purely sinusoidal path (restored

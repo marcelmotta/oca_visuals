@@ -12,6 +12,29 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v28 — 2026-07-22 — Fixed fractal bloom obscuring the logo's center (scenes 4 & 5)
+
+- **Found the actual cause of the reported "blur blocking the center"
+  on channel 10.** At full bloom, the fractal's reveal mask saturates
+  to 1.0 across the ENTIRE screen (it's based on `dist_sq >= 0`, which
+  is always true) — meaning at peak bloom the fractal fully covers
+  every part of the frame where the video's black background is
+  transparent, i.e. everywhere except the mark's own white shapes,
+  including right behind/around the logo. Channel 10 (pads) is what
+  triggers scene 5's bloom, which is why it looked tied to that channel
+  specifically; the same mechanism exists in scene 4 too (shared code),
+  just less obviously since that bloom cycles automatically rather
+  than from an obvious user action.
+- **Fixed with a protected "clear zone"**: the fractal's contribution
+  now ramps from zero at the exact center up to full strength by radius
+  0.45, so the area immediately around the logo/video plane always
+  stays clear regardless of bloom state, while the fractal still blooms
+  fully everywhere further out. Verified numerically before/after.
+- Note: scene 6 doesn't have this fractal-bloom mechanism at all (it's
+  specific to scenes 4/5's shared background shader) — if scene 6 has a
+  separate issue, it needs its own description since this fix doesn't
+  touch it.
+
 ## v27 — 2026-07-22 — MIDI hot-plug, less vivid glitch, scene 3 ripple tuning + directional shading
 
 - **MIDI hot-plug support.** Previously the MIDI port was only opened
