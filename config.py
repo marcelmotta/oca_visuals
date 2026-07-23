@@ -35,36 +35,6 @@ TARGET_FPS = 60
 # back instantly. Set to None to disable and always show the cursor.
 CURSOR_IDLE_HIDE_SECONDS = 2.0
 
-# If True, every scene's own animated content (particle motion, hue
-# drift, camera reactions, etc.) stays frozen on a static frame whenever
-# MIDI hasn't been active recently — and un-freezes again as soon as it
-# resumes. This can toggle on/off as many times as needed over a run
-# (e.g. it re-freezes if the MIDI source stops sending, then un-freezes
-# again once it resumes) — see MIDI_ACTIVITY_TIMEOUT_SECONDS below for
-# how "recently" is defined. Manually switching scenes (keys 1-5) or a
-# MIDI program-change message always works immediately regardless of
-# this — only each scene's own content freezes, never the ability to
-# change which scene is on screen. Set to False to always animate.
-WAIT_FOR_MIDI_BEFORE_ANIMATING = True
-
-# How long (in seconds) without any channel-based MIDI message before
-# WAIT_FOR_MIDI_BEFORE_ANIMATING considers the input "gone quiet" and
-# starts winding down (see MIDI_SETTLE_DURATION_SECONDS below). Kept
-# short so pausing MIDI reads as an almost-immediate reaction rather
-# than a laggy one; if this causes flicker during normal playing (brief
-# rests between notes), raise it.
-MIDI_ACTIVITY_TIMEOUT_SECONDS = 0.3
-
-# Once MIDI has gone quiet (above), animation keeps running for this
-# long before the show actually freezes — long enough for whatever's
-# already in motion (a particle burst mid-flight, a crossfade, the
-# camera easing back to neutral) to settle naturally, rather than
-# freezing mid-motion at an arbitrary, jarring instant. After this
-# window, every scene resets to its defined static/neutral pose (e.g.
-# the logo's rotation returns to its initial, untilted orientation) and
-# then holds there until MIDI resumes.
-MIDI_SETTLE_DURATION_SECONDS = 1.5
-
 # A note on 4K performance: the shader work (noise, the Julia-set
 # fractal, particle rendering) scales with pixel count, and 4K has
 # ~9x the pixels of 720p. On a discrete GPU or Apple Silicon this is

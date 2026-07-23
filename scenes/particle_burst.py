@@ -455,11 +455,3 @@ class ParticleBurstScene(Scene):
 
     def teardown(self):
         self.logo_overlay.release()
-
-    def reset_to_static(self):
-        self.life[:] = 0.0  # clears every particle (dead = invisible)
-        self.wind_amount = 0.0
-        self.emit_accum = 0.0
-        for fbo in (self.fbo_a, self.fbo_b):
-            fbo.use()
-            self.ctx.clear(0.0, 0.0, 0.0, 1.0)

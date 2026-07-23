@@ -107,17 +107,6 @@ class SceneManager:
         for scene in self.scenes.values():
             scene.resize(width, height)
 
-    def reset_all_to_static(self):
-        """Calls reset_to_static() on every scene, not just the current
-        one — so that if the user switches scenes (keys 1-5) while the
-        show is frozen, whatever scene they land on is also showing its
-        defined neutral pose rather than leftover state from whenever it
-        was last active. See Scene.reset_to_static() and main.py for
-        when this gets called.
-        """
-        for scene in self.scenes.values():
-            scene.reset_to_static()
-
     def handle_program_change(self, program_number):
         """Looks up the requested scene and starts a crossfade to it."""
         target_name = SCENE_PROGRAM_MAP.get(program_number)
@@ -131,34 +120,17 @@ class SceneManager:
         self.crossfade_elapsed = 0.0
         print(f"Switching scene: {self.current_name} -> {target_name}")
 
-    def update_and_render(self, dt, midi, camera, screen_fbo, freeze=False):
-        """Renders the current (and, mid-crossfade, next) scene.
-
-        `freeze=True` skips calling update() on any scene — render()
-        still runs, so whatever was last computed keeps being redrawn as
-        a static frame. Used to hold each scene's own animated content
-        (particle motion, hue drift, camera reactions, etc.) still until
-        MIDI is actually being received (see main.py).
-
-        IMPORTANT: crossfading itself (switching which scene is shown)
-        is NEVER gated by `freeze` — manually switching scenes (keys
-        1-5) or a MIDI program-change message must always work
-        immediately, even with no MIDI signal currently active. Only
-        the CONTENT of each scene freezes, never the ability to change
-        which scene is on screen.
-        """
+    def update_and_render(self, dt, midi, camera, screen_fbo):
         if midi.program_change is not None:
             self.handle_program_change(midi.program_change)
 
         current_scene = self.scenes[self.current_name]
-        if not freeze:
-            current_scene.update(dt, midi, camera)
+        current_scene.update(dt, midi, camera)
         current_scene.render(self.fbo_current)
 
         if self.crossfading:
             next_scene = self.scenes[self.next_name]
-            if not freeze:
-                next_scene.update(dt, midi, camera)
+            next_scene.update(dt, midi, camera)
             next_scene.render(self.fbo_next)
 
             self.crossfade_elapsed += dt

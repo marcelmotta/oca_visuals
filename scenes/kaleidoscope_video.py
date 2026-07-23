@@ -331,6 +331,17 @@ class KaleidoscopeVideoScene(Scene):
         self.punch = 0.0
         self.bg_active = 0.0
 
+        # The character-pop chase (below, driven by MIDI Clock triplets)
+        # should only advance while MIDI is actually being received from
+        # any of the 16 channels — MIDI Clock is a separate real-time
+        # message stream from note/CC channel messages, so a sequencer
+        # can keep sending clock continuously even while nothing is
+        # otherwise being played; without this check the chase would
+        # keep animating in that situation, which isn't what "no MIDI
+        # triggers being received" should look like.
+        self.last_midi_time = -9999.0
+        self.MIDI_QUIET_TIMEOUT = 0.4
+
     def _prepare_frame(self, frame_bgr):
         if (frame_bgr.shape[1], frame_bgr.shape[0]) != (self.frame_w, self.frame_h):
             frame_bgr = cv2.resize(
@@ -371,8 +382,15 @@ class KaleidoscopeVideoScene(Scene):
         autonomous_hue = (self.time * 0.008) % 1.0
         self.hue = (autonomous_hue + keys_cc) % 1.0
 
-        # Sequential character pop, timed to MIDI Clock triplets.
-        if midi.triplet_tick_pending:
+        # Sequential character pop, timed to MIDI Clock triplets — but
+        # only while channel-based MIDI has recently been received (see
+        # setup() comment above): clock can keep ticking on its own even
+        # with no notes/CC being sent, and this shouldn't animate then.
+        if midi.message_received_this_frame:
+            self.last_midi_time = self.time
+        midi_recently_active = (self.time - self.last_midi_time) < self.MIDI_QUIET_TIMEOUT
+
+        if midi.triplet_tick_pending and midi_recently_active:
             slot = self.slot_order[self.order_pointer % RING_SLOT_COUNT]
             self.slot_pop_time[slot] = self.time
             self.order_pointer += 1
@@ -424,10 +442,3 @@ class KaleidoscopeVideoScene(Scene):
     def teardown(self):
         if self.cap is not None:
             self.cap.release()
-
-    def reset_to_static(self):
-        self.petals.life[:] = 0.0
-        self.bg_active = 0.0
-        self.hue = 0.0
-        self.rotation = 0.0
-        self.slot_pop_time[:] = -999.0

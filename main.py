@@ -21,6 +21,11 @@ CONTROLS WHILE RUNNING:
 - The mouse cursor auto-hides after a couple seconds of no movement
   (like a video player) and reappears instantly on any movement — see
   CURSOR_IDLE_HIDE_SECONDS in config.py to change the delay or disable.
+
+Note: an earlier global "freeze everything until MIDI arrives" feature
+was tried here and removed — it didn't work well in practice. MIDI-
+awareness is now handled per-scene instead (see individual scene files
+for any such behavior, e.g. logo_video_pulse.py's rotation).
 """
 
 import time
@@ -29,8 +34,7 @@ import moderngl
 
 from config import (
     WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, FULLSCREEN, TARGET_FPS,
-    CURSOR_IDLE_HIDE_SECONDS, WAIT_FOR_MIDI_BEFORE_ANIMATING,
-    MIDI_ACTIVITY_TIMEOUT_SECONDS, MIDI_SETTLE_DURATION_SECONDS,
+    CURSOR_IDLE_HIDE_SECONDS,
 )
 from midi_input import MidiState, open_midi_port, poll_midi
 from scene_manager import SceneManager
@@ -145,31 +149,6 @@ def main():
     MIDI_RECONNECT_INTERVAL = 3.0
     midi_reconnect_timer = 0.0
 
-    # Rolling "has MIDI been active recently" tracker for
-    # WAIT_FOR_MIDI_BEFORE_ANIMATING — starts far enough in the past that
-    # the show is frozen from launch, and updates every time a
-    # channel-based message arrives, so it can toggle freeze on/off
-    # repeatedly as playing starts and stops, rather than a one-way switch.
-    last_midi_activity_time = -MIDI_ACTIVITY_TIMEOUT_SECONDS * 2
-
-    # Three-phase freeze state, so stopping MIDI doesn't just freeze
-    # everything mid-motion at an arbitrary instant:
-    #   1. "active"   - MIDI recently received; everything updates live.
-    #   2. "settling" - MIDI just went quiet; still updates normally for
-    #                   MIDI_SETTLE_DURATION_SECONDS, so whatever's
-    #                   already in motion (a burst mid-flight, a
-    #                   crossfade) finishes/settles naturally.
-    #   3. "frozen"   - settle window elapsed; every scene is reset ONCE
-    #                   to its defined neutral pose (reset_all_to_static),
-    #                   then update() stops being called at all until
-    #                   MIDI resumes.
-    # `has_ever_activated` distinguishes true app-launch silence (already
-    # in a clean state straight out of setup() - no settling/resetting
-    # needed) from "was playing, then stopped" (which does need both).
-    has_ever_activated = False
-    settle_start_time = None
-    reset_pending = False
-
     while not glfw.window_should_close(window):
         glfw.poll_events()
 
@@ -192,32 +171,7 @@ def main():
                 midi_reconnect_timer = 0.0
                 midi_port = open_midi_port(midi_state, quiet=True)
 
-        if midi_state.message_received_this_frame:
-            last_midi_activity_time = now
-        midi_recently_active = (now - last_midi_activity_time) < MIDI_ACTIVITY_TIMEOUT_SECONDS
-
-        if not WAIT_FOR_MIDI_BEFORE_ANIMATING:
-            freeze = False
-        elif midi_recently_active:
-            has_ever_activated = True
-            settle_start_time = None
-            reset_pending = True  # armed for the next time it goes quiet
-            freeze = False
-        elif not has_ever_activated:
-            # Never received MIDI at all yet — already in the clean
-            # state setup() left it in, so no settle/reset needed.
-            freeze = True
-        else:
-            if settle_start_time is None:
-                settle_start_time = now
-            settling = (now - settle_start_time) < MIDI_SETTLE_DURATION_SECONDS
-            freeze = not settling
-            if freeze and reset_pending:
-                scene_manager.reset_all_to_static()
-                reset_pending = False
-
-        if not freeze:
-            camera.update(dt, midi_state)
+        camera.update(dt, midi_state)
 
         if CURSOR_IDLE_HIDE_SECONDS is not None and not cursor_state["hidden"]:
             if now - cursor_state["last_move_time"] >= CURSOR_IDLE_HIDE_SECONDS:
@@ -231,7 +185,7 @@ def main():
         # it's correct again right before drawing to the actual screen.
         ctx.viewport = (0, 0, *glfw.get_framebuffer_size(window))
         ctx.clear(0.0, 0.0, 0.0, 1.0)
-        scene_manager.update_and_render(dt, midi_state, camera, ctx.screen, freeze=freeze)
+        scene_manager.update_and_render(dt, midi_state, camera, ctx.screen)
 
         glfw.swap_buffers(window)
 

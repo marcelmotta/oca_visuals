@@ -254,16 +254,53 @@ class LogoVideoPulseScene(Scene):
         self.glitch_active_until = 0.0
         self.glitch_seed = 0.0
 
-        # See reset_to_static()/update() below: while True, render() uses
-        # a fixed neutral (untilted) orientation instead of computing it
-        # live from the camera's continuously-running oscillation.
-        self._frozen = False
+        # --- Rotation: only advances while MIDI is actually being
+        # received (any of the 16 channels), and does NOT freeze
+        # mid-tilt when it stops — it finishes the current rotation
+        # loop first, then holds at the neutral/untilted starting pose.
+        #
+        # yaw/pitch/roll are all driven by INTEGER harmonics of one
+        # shared `spin_phase` (1x, 2x, 3x) rather than three
+        # independently-timed sine waves — integer harmonics of a
+        # common phase all share that phase's period, so "one full
+        # rotation loop" is well-defined as exactly one turn of
+        # spin_phase (2*pi), instead of being ambiguous across three
+        # differently-timed axes.
+        self.spin_phase = 0.0
+        self.spinning = False       # currently advancing spin_phase
+        self.stop_at_phase = None   # set once winding down; None = not winding down
+        self.last_midi_time = -9999.0
+        self.SPIN_FREQ = 0.8         # radians/sec of spin_phase advance (~7.9s per full loop)
+        self.MIDI_QUIET_TIMEOUT = 0.4  # seconds of silence before winding down
 
     def update(self, dt, midi, camera):
-        self._frozen = False
         self.time += dt
         self.camera = camera
         self.video.update(dt)
+
+        if midi.message_received_this_frame:
+            self.last_midi_time = self.time
+        midi_recently_active = (self.time - self.last_midi_time) < self.MIDI_QUIET_TIMEOUT
+
+        if midi_recently_active:
+            self.spin_phase += self.SPIN_FREQ * dt
+            self.spinning = True
+            self.stop_at_phase = None
+        elif self.spinning:
+            if self.stop_at_phase is None:
+                # Just went quiet: lock in the NEXT loop boundary ahead
+                # of the current phase as the point to stop at, so
+                # whatever rotation is already in progress completes
+                # naturally instead of cutting off mid-turn.
+                current_loop = math.floor(self.spin_phase / (2 * math.pi))
+                self.stop_at_phase = (current_loop + 1) * (2 * math.pi)
+            self.spin_phase += self.SPIN_FREQ * dt
+            if self.spin_phase >= self.stop_at_phase:
+                # Wrap back into [0, 2*pi) at an equivalent phase and stop.
+                self.spin_phase = self.stop_at_phase % (2 * math.pi)
+                self.spinning = False
+                self.stop_at_phase = None
+        # else: already stopped: spin_phase holds exactly where it is.
 
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
@@ -284,17 +321,11 @@ class LogoVideoPulseScene(Scene):
         self.bg_program["u_aspect"] = target.size[0] / target.size[1]
         self.bg_vao.render(moderngl.TRIANGLES)
 
-        cam_time = cam.time if cam else self.time
-        cam_punch = cam.punch if cam else 0.0
-        if self._frozen:
-            # Reset to the initial/untilted orientation rather than
-            # holding at whatever arbitrary point the sine-driven tilt
-            # happened to be at when things froze.
-            yaw, pitch, roll = 0.0, 0.0, 0.0
-        else:
-            yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.12
-            pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
-            roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.08
+        cam_punch = cam.punch if (cam and self.spinning) else 0.0
+        phase = self.spin_phase
+        yaw = 0.75 * math.sin(phase) + cam_punch * 0.12
+        pitch = 0.50 * math.sin(2.0 * phase + 1.0)
+        roll = 0.40 * math.sin(3.0 * phase + 2.4) + cam_punch * 0.08
 
         aspect = target.size[0] / target.size[1]
         proj = _perspective_matrix(self.fov, aspect, 0.1, 10.0)
@@ -317,7 +348,3 @@ class LogoVideoPulseScene(Scene):
 
     def teardown(self):
         self.video.release()
-
-    def reset_to_static(self):
-        self._frozen = True
-        self.glitch_active_until = 0.0  # clear any in-progress glitch

@@ -12,6 +12,36 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v36 — 2026-07-22 — Reverted global freeze feature, replaced with per-scene MIDI-awareness
+
+- **Removed the global "freeze until MIDI" feature entirely** (main.py's
+  3-phase state machine, scene_manager's freeze parameter,
+  `Scene.reset_to_static()` hook, and config's `WAIT_FOR_MIDI_BEFORE_
+  ANIMATING`/`MIDI_ACTIVITY_TIMEOUT_SECONDS`/`MIDI_SETTLE_DURATION_
+  SECONDS`) per feedback that it wasn't working well. Scenes 1-3 go
+  back to always animating unconditionally, matching pre-v33 behavior.
+- **Scene 4 — logo rotation now only advances while MIDI is being
+  received from any of the 16 channels**, and does NOT freeze mid-tilt
+  when it stops. Redesigned the rotation math: yaw/pitch/roll are now
+  integer harmonics (1x/2x/3x) of one shared `spin_phase` instead of
+  three independently-timed sine waves — integer harmonics of a common
+  phase all share its period, so "one full rotation loop" is well-
+  defined as exactly one turn of that phase, instead of being ambiguous
+  across three differently-timed axes. When MIDI goes quiet, the
+  current loop is allowed to complete (verified numerically: always
+  lands back at exactly phase 0, the neutral/untilted pose, regardless
+  of when in the loop MIDI stopped) before halting — worst-case wait is
+  one full loop period (~7.9s), verified both for stopping early and
+  almost immediately in a loop.
+- **Scene 5 — the sequential character-pop chase now also only runs
+  while channel-based MIDI is recently active.** Previously it was
+  driven purely by MIDI Clock triplet ticks, but MIDI Clock is a
+  separate real-time message stream from notes/CC — a sequencer can
+  keep sending clock continuously with nothing else being played, which
+  would have kept the chase animating with "no MIDI triggers" in the
+  everyday sense. Now gated on the same "any of the 16 channels
+  recently active" check used in scene 4.
+
 ## v35 — 2026-07-22 — Faster freeze reaction + settle-then-reset instead of freezing mid-motion
 
 - **Freeze reaction sped up**: `MIDI_ACTIVITY_TIMEOUT_SECONDS` cut from
