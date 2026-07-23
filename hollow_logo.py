@@ -96,8 +96,8 @@ class HollowLogoOverlay:
         self.vao = make_fullscreen_quad_vao(ctx, self.program)
         self.ctx = ctx
 
-    def update(self, dt):
-        self.video.update(dt)
+    def update(self, dt, midi):
+        self.video.update(dt, midi)
 
     def render(self, target):
         target.use()

@@ -1,7 +1,7 @@
 """
 kaleidoscope_video.py
 ----------------------
-Scene 6: the spin-loop video (assets/oca_spin_loop_v3.mp4) fed through a
+Scene 5: the spin-loop video (assets/oca_spin_loop_v3.mp4) fed through a
 mirrored radial kaleidoscope, dressed with several Japanese-inspired
 visual elements:
 
@@ -45,12 +45,12 @@ import math
 import os
 import numpy as np
 import moderngl
-import cv2
 from PIL import Image
 
 from scene_base import Scene
 from utils import make_fullscreen_quad_vao
 from particle_field import ParticleField
+from video_texture import VideoTexture
 
 VIDEO_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -275,28 +275,7 @@ class KaleidoscopeVideoScene(Scene):
     name = "kaleidoscope_video"
 
     def setup(self, ctx):
-        self.cap = cv2.VideoCapture(VIDEO_PATH)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Could not open video file: {VIDEO_PATH}")
-
-        self.video_fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
-        raw_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        raw_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        scale = min(1.0, MAX_TEXTURE_DIM / max(raw_w, raw_h))
-        self.frame_w = max(1, int(raw_w * scale))
-        self.frame_h = max(1, int(raw_h * scale))
-
-        ok, frame = self.cap.read()
-        if not ok:
-            raise RuntimeError("Could not read the first frame of the video")
-        self.texture = ctx.texture((self.frame_w, self.frame_h), 4, self._prepare_frame(frame))
-        self.texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
-        self.texture.repeat_x = True
-        self.texture.repeat_y = True
-
-        self.video_time_accum = 0.0
-        self.frame_duration = 1.0 / self.video_fps
+        self.video = VideoTexture(ctx, VIDEO_PATH, max_dim=MAX_TEXTURE_DIM)
 
         self.program = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)
         self.vao = make_fullscreen_quad_vao(ctx, self.program)
@@ -319,8 +298,6 @@ class KaleidoscopeVideoScene(Scene):
         self.slot_pop_time = np.full(RING_SLOT_COUNT, -999.0, dtype="f4")
         self.order_pointer = 0
 
-        self.video_aspect = self.frame_w / self.frame_h
-
         self.time = 0.0
         self.rotation = 0.0
         self.segments = 8.0
@@ -331,40 +308,16 @@ class KaleidoscopeVideoScene(Scene):
         self.punch = 0.0
         self.bg_active = 0.0
 
-        # The character-pop chase (below, driven by MIDI Clock triplets)
-        # should only advance while MIDI is actually being received from
-        # any of the 16 channels — MIDI Clock is a separate real-time
-        # message stream from note/CC channel messages, so a sequencer
-        # can keep sending clock continuously even while nothing is
-        # otherwise being played; without this check the chase would
-        # keep animating in that situation, which isn't what "no MIDI
-        # triggers being received" should look like.
-        self.last_midi_time = -9999.0
-        self.MIDI_QUIET_TIMEOUT = 0.4
-
-    def _prepare_frame(self, frame_bgr):
-        if (frame_bgr.shape[1], frame_bgr.shape[0]) != (self.frame_w, self.frame_h):
-            frame_bgr = cv2.resize(
-                frame_bgr, (self.frame_w, self.frame_h), interpolation=cv2.INTER_AREA
-            )
-        frame_rgba = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGBA)
-        return np.ascontiguousarray(frame_rgba).tobytes()
-
-    def _advance_video(self, dt):
-        self.video_time_accum += dt
-        while self.video_time_accum >= self.frame_duration:
-            ok, frame = self.cap.read()
-            if not ok:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                ok, frame = self.cap.read()
-            if ok:
-                self.texture.write(self._prepare_frame(frame))
-            self.video_time_accum -= self.frame_duration
-
     def update(self, dt, midi, camera):
         self.time += dt
         self.camera = camera
-        self._advance_video(dt)
+
+        # The video's own playback (the logo's spin, baked into the
+        # footage) is gated on MIDI activity inside VideoTexture itself
+        # — the one shared implementation every scene showing this
+        # footage uses (see video_texture.py). The kaleidoscope's own
+        # rotation below is a separate, always-on animation.
+        self.video.update(dt, midi)
 
         bass_intensity = midi.role_cc("bass", "intensity", 0.3)
         self.rotation += dt * (0.15 + bass_intensity * 0.5)
@@ -383,14 +336,10 @@ class KaleidoscopeVideoScene(Scene):
         self.hue = (autonomous_hue + keys_cc) % 1.0
 
         # Sequential character pop, timed to MIDI Clock triplets — but
-        # only while channel-based MIDI has recently been received (see
-        # setup() comment above): clock can keep ticking on its own even
-        # with no notes/CC being sent, and this shouldn't animate then.
-        if midi.message_received_this_frame:
-            self.last_midi_time = self.time
-        midi_recently_active = (self.time - self.last_midi_time) < self.MIDI_QUIET_TIMEOUT
-
-        if midi.triplet_tick_pending and midi_recently_active:
+        # only while channel-based MIDI has recently been received:
+        # clock can keep ticking on its own even with no notes/CC being
+        # sent, and this shouldn't animate then.
+        if midi.triplet_tick_pending and midi.recently_active():
             slot = self.slot_order[self.order_pointer % RING_SLOT_COUNT]
             self.slot_pop_time[slot] = self.time
             self.order_pointer += 1
@@ -411,14 +360,14 @@ class KaleidoscopeVideoScene(Scene):
         cam = self.camera
 
         self.program["u_video"] = 0
-        self.texture.use(location=0)
+        self.video.texture.use(location=0)
         self.program["u_glyph_a"] = 1
         self.glyph_textures[0].use(location=1)
         self.program["u_glyph_b"] = 2
         self.glyph_textures[1].use(location=2)
         self.program["u_time"] = self.time
         self.program["u_aspect"] = target.size[0] / target.size[1]
-        self.program["u_video_aspect"] = self.video_aspect
+        self.program["u_video_aspect"] = self.video.aspect
         self.program["u_ring_radius"] = RING_RADIUS
         self.program["u_ring_thickness"] = RING_THICKNESS
         self.program["u_slot_count"] = float(RING_SLOT_COUNT)
@@ -440,5 +389,4 @@ class KaleidoscopeVideoScene(Scene):
         self.petals.render()
 
     def teardown(self):
-        if self.cap is not None:
-            self.cap.release()
+        self.video.release()

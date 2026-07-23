@@ -179,7 +179,7 @@ class FeedbackTrailsScene(Scene):
     def update(self, dt, midi, camera):
         self.time += dt
         self.camera = camera
-        self.logo_overlay.update(dt)
+        self.logo_overlay.update(dt, midi)
 
         intensity = 0.2 + midi.role_cc("bass", "intensity", 0.0) * 0.7
 

@@ -171,6 +171,11 @@ def main():
                 midi_reconnect_timer = 0.0
                 midi_port = open_midi_port(midi_state, quiet=True)
 
+        # Drives MidiState.recently_active() — the one shared "is MIDI
+        # active" signal every scene/helper reads, using a genuine
+        # app-wide clock rather than any single scene's own elapsed time.
+        midi_state.advance_activity_clock(dt)
+
         camera.update(dt, midi_state)
 
         if CURSOR_IDLE_HIDE_SECONDS is not None and not cursor_state["hidden"]:

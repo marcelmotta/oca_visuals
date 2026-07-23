@@ -294,7 +294,7 @@ class ParticleBurstScene(Scene):
     def update(self, dt, midi, camera):
         self.time += dt
         self.camera = camera
-        self.logo_overlay.update(dt)
+        self.logo_overlay.update(dt, midi)
 
         bass_intensity = midi.role_cc("bass", "intensity", 0.5)
         flow_speed = 0.5 + bass_intensity * 1.8

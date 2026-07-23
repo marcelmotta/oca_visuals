@@ -220,7 +220,7 @@ class NoiseFieldScene(Scene):
         self.time += dt
         self.pulse_age += dt
         self.camera = camera
-        self.logo_overlay.update(dt)
+        self.logo_overlay.update(dt, midi)
 
         for note in midi.role_triggers("texture"):
             x = ((note % 12) / 12.0) * 2.0 - 1.0

@@ -47,6 +47,8 @@ NUM_CHANNELS = 16
 CLOCK_PULSES_PER_QUARTER_NOTE = 24
 CLOCK_PULSES_PER_TRIPLET = CLOCK_PULSES_PER_QUARTER_NOTE // 3  # = 8
 
+MIDI_QUIET_TIMEOUT = 0.4  # seconds of silence before recently_active() flips off
+
 
 class MidiState:
     """Holds the current, continuously-updated state of all MIDI input.
@@ -67,11 +69,26 @@ class MidiState:
         message_received_this_frame (bool): True for exactly one frame
             whenever a channel-based MIDI message (note, CC, program
             change — not channel-less messages like clock) arrived
-            during that frame. main.py uses this to track a rolling
-            "has MIDI been active recently" timeout, which can toggle on
-            and off repeatedly as playing starts/stops — this is a
-            momentary flag, not a permanent latch, deliberately, so that
-            behavior can live entirely in main.py.
+            during that frame. Feeds `advance_activity_clock()` below,
+            which turns it into a rolling "has MIDI been active
+            recently" signal — a momentary flag, not a permanent latch,
+            so it can toggle on and off repeatedly as playing starts and
+            stops.
+        seconds_since_message (float): seconds elapsed since the last
+            channel-based MIDI message, advanced once per frame by
+            `advance_activity_clock()` regardless of which scene is
+            active — a genuine app-wide clock, not a per-scene one (a
+            scene's own elapsed time only advances while it's the one
+            being shown). This is what `recently_active()` reads.
+
+    ONE SHARED "IS MIDI ACTIVE" SIGNAL
+    -----------------------------------
+    Several scenes/helpers need to know "has real MIDI activity happened
+    recently" (e.g. to freeze the shared spin-loop video on MIDI-quiet,
+    or gate a per-scene animation) — rather than each reimplementing its
+    own last-message-time bookkeeping, they all call `recently_active()`
+    here. This is the one place that logic lives, for every current and
+    future scene.
     """
 
     def __init__(self):
@@ -80,6 +97,9 @@ class MidiState:
         self.active_notes = set()
         self.program_change = None
         self.message_received_this_frame = False
+        # No message has ever arrived yet, so nothing should read as
+        # "recently active" before the first one does.
+        self.seconds_since_message = float("inf")
 
         self.channel_cc = {ch: {} for ch in range(NUM_CHANNELS)}
         self.channel_note_triggers = {ch: set() for ch in range(NUM_CHANNELS)}
@@ -87,6 +107,19 @@ class MidiState:
 
         self.clock_pulse_count = 0
         self.triplet_tick_pending = False
+
+    def advance_activity_clock(self, dt):
+        """Call once per frame, after poll_midi(), regardless of which
+        scene is currently active."""
+        if self.message_received_this_frame:
+            self.seconds_since_message = 0.0
+        else:
+            self.seconds_since_message += dt
+
+    def recently_active(self, timeout=MIDI_QUIET_TIMEOUT):
+        """True if a channel-based MIDI message arrived within the last
+        `timeout` seconds."""
+        return self.seconds_since_message < timeout
 
     def begin_frame(self):
         """Call once per frame BEFORE polling MIDI, to clear one-shot events."""

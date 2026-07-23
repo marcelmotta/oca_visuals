@@ -12,6 +12,52 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v37 — 2026-07-23 — Fixed what "stop the logo rotation" actually meant, one shared MIDI-activity signal for all scenes
+
+- **Clarified what v36 got wrong**: "the logo's rotation" refers to the
+  spin-loop video's own footage (it's a loop of the logo spinning), not
+  the 3D plane transform scene 4 applies on top. v36 had frozen the
+  entire yaw/pitch/roll tilt of scene 4's plane whenever MIDI went
+  quiet — that tilt was never what was meant by "rotation," and per
+  feedback should keep animating regardless of MIDI, exactly as it did
+  before v33. Reverted scene 4's tilt to the pre-v33 always-on
+  cam-time-driven sines; removed the now-unneeded `spin_phase`/
+  `spinning`/`stop_at_phase` machinery entirely.
+- **The video's own playback now starts static and only finishes its
+  current loop before stopping** — it does not loop at all until MIDI
+  is first received (previously it started looping immediately on
+  launch regardless of MIDI, which was never right), and once playing,
+  going quiet lets the CURRENT loop finish all the way to its last
+  frame — same as always — then holds there until MIDI activity
+  returns, at which point it resumes from the start. (Two earlier passes
+  within this same round got this wrong: the first froze on whatever
+  frame happened to be showing the instant MIDI went quiet, mid-loop;
+  fixing that surfaced the startup issue.)
+- **Moved "is MIDI recently active" out of individual scenes entirely,
+  into one shared signal**: `MidiState.recently_active()`
+  (`midi_input.py`), backed by a genuine app-wide clock advanced once
+  per frame in `main.py`'s main loop — not any single scene's own
+  elapsed time, which only ticks while that scene happens to be the one
+  showing. Every scene/helper that needs this now reads the same
+  signal instead of keeping its own `last_midi_time`/timeout pair, so
+  new scenes get correct, consistent behavior automatically.
+- **Scene 5 (`kaleidoscope_video.py`) now uses the shared
+  `VideoTexture` helper** (`video_texture.py`) instead of its own
+  duplicated OpenCV capture/frame-advance code — the same helper scenes
+  1-4 already used. This means the finish-loop-then-hold behavior above
+  now applies identically across all 5 scenes from one implementation,
+  rather than being reimplemented per scene. Scene 5's own kaleidoscope
+  rotation and its character-pop chase (which also now reads
+  `recently_active()` directly) are otherwise unchanged.
+- Verified numerically (using the real `MidiState.recently_active()`
+  logic, not a stand-in): stays static on frame 0 through 3 simulated
+  seconds of silence at launch, starts playing on the first MIDI
+  message, finishes the current loop and freezes on exactly the last
+  frame (not mid-loop) when MIDI goes quiet partway through, stays
+  frozen for as long as MIDI stays quiet, and wraps to frame 0 and
+  resumes the instant MIDI returns. Also verified by running the app
+  with a real MIDI device connected — no errors across the refactor.
+
 ## v36 — 2026-07-22 — Reverted global freeze feature, replaced with per-scene MIDI-awareness
 
 - **Removed the global "freeze until MIDI" feature entirely** (main.py's

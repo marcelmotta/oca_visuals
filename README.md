@@ -1,7 +1,7 @@
 # Oca Collective — Visuals
 
 A code-based, MIDI-reactive visual rig for live performance, built in
-Python + ModernGL (OpenGL). Three modular scenes so far, switchable live
+Python + ModernGL (OpenGL). Five modular scenes so far, switchable live
 via MIDI program change, with smooth crossfades between them.
 
 ## 1. Install (macOS)
@@ -41,7 +41,7 @@ python3 main.py
 ```
 
 - **ESC** quits.
-- **1 / 2 / 3** keys manually switch scenes (for testing without a MIDI
+- **1-5** keys manually switch scenes (for testing without a MIDI
   controller connected).
 - The mouse cursor auto-hides after ~2 seconds of no movement (like a
   video player) and reappears instantly on any movement — see
@@ -49,15 +49,29 @@ python3 main.py
   disable it entirely.
 - MIDI-awareness for animation is handled per-scene rather than as a
   global freeze (an earlier global "freeze everything until MIDI
-  arrives" attempt didn't work well and was removed). Currently: scene
-  4's logo only rotates while MIDI is being received from any of the 16
-  channels, and doesn't stop mid-tilt when it stops — it finishes its
-  current rotation loop first, then holds at the neutral/untilted
-  starting pose (see `logo_video_pulse.py`, `SPIN_FREQ`/
-  `MIDI_QUIET_TIMEOUT`). Scene 5's sequential character-pop chase
-  similarly only advances while channel-based MIDI is recently active,
-  not just whenever MIDI Clock happens to be ticking (see
-  `kaleidoscope_video.py`, `MIDI_QUIET_TIMEOUT`).
+  arrives" attempt didn't work well and was removed) — with one
+  exception: whether MIDI has been active "recently" is tracked in ONE
+  shared place, `MidiState.recently_active()` (`midi_input.py`), driven
+  by a genuine app-wide clock in `main.py`'s main loop rather than any
+  single scene's own elapsed time. Every current (and future) scene or
+  helper that needs to know "is MIDI active right now" reads from this
+  same signal instead of reimplementing its own timeout.
+  - **The spin-loop video's own playback** (the logo's rotation, baked
+    into the footage itself, not a transform any scene applies) is
+    gated on this signal via the shared `VideoTexture` helper
+    (`video_texture.py`), used by all 5 scenes that display this
+    footage. It starts held on the video's first frame and doesn't
+    begin looping at all until MIDI is first received; once playing, it
+    loops normally, and if MIDI goes quiet it lets the CURRENT loop
+    finish playing to its last frame rather than cutting it off,
+    holding there until MIDI activity returns, at which point it
+    resumes from the start. This is independent of any other animation
+    layered on top of the footage — e.g. scene 4's 3D plane tilt/bounce
+    and scene 5's own kaleidoscope rotation keep running at all times
+    regardless of MIDI.
+  - Scene 5's sequential character-pop chase similarly only advances
+    while MIDI is recently active, not just whenever MIDI Clock happens
+    to be ticking (see `kaleidoscope_video.py`).
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
   bursts/pulses depending on the active scene; CC1, CC74, CC71, CC7
   control color/intensity/trail-length/brightness; program-change
@@ -102,7 +116,7 @@ mapping and are now deliberately kept separate) — adjust
 | `scenes/logo_video_pulse.py` | The spin-loop video as a real 3D-projected plane with a subtle glitch effect, over a glowing braid background. (The fractal background element was removed entirely after repeated issues — being rebuilt from scratch.) |
 | `scenes/kaleidoscope_video.py` | The spin-loop video through a mirrored kaleidoscope, with seigaiha waves, asanoha lattice, drifting sakura petals, a gold mandala ring, and "温泉" characters that pop in sequence around the boundary, timed to MIDI Clock |
 | `assets/onsen1.png`, `assets/onsen2.png` | Individual "温" / "泉" glyph textures used by `kaleidoscope_video.py` |
-| `assets/oca_spin_loop_v3.mp4` | Source video used by `logo_video_pulse.py` |
+| `assets/oca_spin_loop_v3.mp4` | Source video used by every scene (via `video_texture.py`) |
 
 ### What changed in this pass
 
