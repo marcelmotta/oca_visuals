@@ -264,3 +264,7 @@ class NoiseFieldScene(Scene):
 
     def teardown(self):
         self.logo_overlay.release()
+
+    def reset_to_static(self):
+        self.pulse_age[:] = 999.0  # clears all ripples (both MIDI and autonomous droplets)
+        self.hue = 0.0

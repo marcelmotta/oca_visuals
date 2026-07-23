@@ -88,3 +88,25 @@ class Scene(ABC):
     def teardown(self):
         """Optional: override to release any extra GPU resources."""
         pass
+
+    def reset_to_static(self):
+        """Optional: override to reset mutable state back to a defined,
+        neutral "at rest" look — cleared particles, rotation back to
+        0, any transient effect (glitch, etc.) turned off.
+
+        Called once whenever the show transitions into a fully frozen
+        state (MIDI has gone quiet past both MIDI_ACTIVITY_TIMEOUT_
+        SECONDS and the MIDI_SETTLE_DURATION_SECONDS grace period that
+        follows it — see config.py). By the time this is called,
+        update() has already kept running through that grace period, so
+        whatever was genuinely in motion (a burst mid-flight, a
+        crossfade) has had a chance to settle/finish naturally; this is
+        for snapping any remaining state (especially anything that
+        would otherwise just hold at an arbitrary mid-cycle value, like
+        a rotation angle) to a specific, consistent, recognizable
+        default rather than freezing wherever it happened to be.
+
+        Default: no-op — override only if the scene has state where an
+        arbitrary frozen value would look wrong/inconsistent.
+        """
+        pass

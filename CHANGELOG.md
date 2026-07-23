@@ -12,6 +12,28 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v35 — 2026-07-22 — Faster freeze reaction + settle-then-reset instead of freezing mid-motion
+
+- **Freeze reaction sped up**: `MIDI_ACTIVITY_TIMEOUT_SECONDS` cut from
+  5s to 0.3s, so pausing MIDI reads as an almost-immediate reaction.
+- **Freezing mid-animation replaced with a proper settle-then-reset.**
+  Previously, stopping MIDI would freeze every scene at whatever
+  arbitrary instant the timeout elapsed — including the logo plane
+  stuck at a random mid-tilt angle. Now there's a brief settle window
+  (`MIDI_SETTLE_DURATION_SECONDS`, default 1.5s) where everything keeps
+  animating normally so anything genuinely in motion (a burst
+  mid-flight, a crossfade) finishes/settles on its own, and only after
+  that does every scene reset ONCE to a defined neutral pose — the
+  logo's rotation returns to its initial untilted orientation,
+  particles/ripples/petals are cleared, trail buffers wiped — and holds
+  there until MIDI resumes. New `Scene.reset_to_static()` hook
+  (default no-op) implemented for all 5 scenes.
+- Verified the full state machine numerically across multiple simulated
+  on/off/on/off cycles: correct fast reaction, correct settle window,
+  and the reset firing exactly once per quiet period (not repeatedly).
+- Re-ran the render-before-update safety audit after these changes;
+  still clean.
+
 ## v34 — 2026-07-22 — Static-until-MIDI reworked: repeatable toggle + scene-switching always works
 
 - **Found that the previous version's fix had never actually been

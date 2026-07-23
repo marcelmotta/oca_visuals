@@ -254,7 +254,13 @@ class LogoVideoPulseScene(Scene):
         self.glitch_active_until = 0.0
         self.glitch_seed = 0.0
 
+        # See reset_to_static()/update() below: while True, render() uses
+        # a fixed neutral (untilted) orientation instead of computing it
+        # live from the camera's continuously-running oscillation.
+        self._frozen = False
+
     def update(self, dt, midi, camera):
+        self._frozen = False
         self.time += dt
         self.camera = camera
         self.video.update(dt)
@@ -280,9 +286,15 @@ class LogoVideoPulseScene(Scene):
 
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
-        yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.12
-        pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
-        roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.08
+        if self._frozen:
+            # Reset to the initial/untilted orientation rather than
+            # holding at whatever arbitrary point the sine-driven tilt
+            # happened to be at when things froze.
+            yaw, pitch, roll = 0.0, 0.0, 0.0
+        else:
+            yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.12
+            pitch = 0.50 * math.sin(cam_time * 0.11 + 1.0)
+            roll = 0.40 * math.sin(cam_time * 0.08 + 2.4) + cam_punch * 0.08
 
         aspect = target.size[0] / target.size[1]
         proj = _perspective_matrix(self.fov, aspect, 0.1, 10.0)
@@ -305,3 +317,7 @@ class LogoVideoPulseScene(Scene):
 
     def teardown(self):
         self.video.release()
+
+    def reset_to_static(self):
+        self._frozen = True
+        self.glitch_active_until = 0.0  # clear any in-progress glitch

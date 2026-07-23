@@ -48,12 +48,22 @@ CURSOR_IDLE_HIDE_SECONDS = 2.0
 WAIT_FOR_MIDI_BEFORE_ANIMATING = True
 
 # How long (in seconds) without any channel-based MIDI message before
-# WAIT_FOR_MIDI_BEFORE_ANIMATING considers the input "gone quiet" again
-# and re-freezes. Long enough that ordinary rests/gaps between notes
-# during normal playing don't cause flickering between frozen/animated;
-# short enough to actually reflect "playing has stopped" reasonably
-# promptly.
-MIDI_ACTIVITY_TIMEOUT_SECONDS = 5.0
+# WAIT_FOR_MIDI_BEFORE_ANIMATING considers the input "gone quiet" and
+# starts winding down (see MIDI_SETTLE_DURATION_SECONDS below). Kept
+# short so pausing MIDI reads as an almost-immediate reaction rather
+# than a laggy one; if this causes flicker during normal playing (brief
+# rests between notes), raise it.
+MIDI_ACTIVITY_TIMEOUT_SECONDS = 0.3
+
+# Once MIDI has gone quiet (above), animation keeps running for this
+# long before the show actually freezes — long enough for whatever's
+# already in motion (a particle burst mid-flight, a crossfade, the
+# camera easing back to neutral) to settle naturally, rather than
+# freezing mid-motion at an arbitrary, jarring instant. After this
+# window, every scene resets to its defined static/neutral pose (e.g.
+# the logo's rotation returns to its initial, untilted orientation) and
+# then holds there until MIDI resumes.
+MIDI_SETTLE_DURATION_SECONDS = 1.5
 
 # A note on 4K performance: the shader work (noise, the Julia-set
 # fractal, particle rendering) scales with pixel count, and 4K has

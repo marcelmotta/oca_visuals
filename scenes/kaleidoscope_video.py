@@ -424,3 +424,10 @@ class KaleidoscopeVideoScene(Scene):
     def teardown(self):
         if self.cap is not None:
             self.cap.release()
+
+    def reset_to_static(self):
+        self.petals.life[:] = 0.0
+        self.bg_active = 0.0
+        self.hue = 0.0
+        self.rotation = 0.0
+        self.slot_pop_time[:] = -999.0

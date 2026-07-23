@@ -255,3 +255,11 @@ class FeedbackTrailsScene(Scene):
 
     def teardown(self):
         self.logo_overlay.release()
+
+    def reset_to_static(self):
+        self.bg_pos[:] = [0.5, 0.5]
+        self.fg_pos[:] = [0.5, 0.5]
+        self.pulse = 0.0
+        for fbo in (self.fbo_a, self.fbo_b):
+            fbo.use()
+            self.ctx.clear(0.0, 0.0, 0.0, 1.0)

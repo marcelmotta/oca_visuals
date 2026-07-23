@@ -48,14 +48,19 @@ python3 main.py
   `CURSOR_IDLE_HIDE_SECONDS` in `config.py` to change the delay or
   disable it entirely.
 - By default, each scene's own animated content freezes on a static
-  frame whenever MIDI hasn't been active recently, and un-freezes the
-  moment it resumes — this toggles on/off as many times as needed over
-  a run (e.g. it re-freezes if the source stops sending, then wakes
-  back up once it resumes), not a one-way switch. Manually switching
-  scenes (keys 1-5) or a MIDI program-change message always works
-  immediately regardless of this — only each scene's own content
-  freezes, never the ability to change which scene is on screen. See
-  `WAIT_FOR_MIDI_BEFORE_ANIMATING` and `MIDI_ACTIVITY_TIMEOUT_SECONDS`
+  frame whenever MIDI hasn't been active recently (reacts within
+  ~0.3s), and un-freezes the moment it resumes — this toggles on/off as
+  many times as needed over a run, not a one-way switch. Rather than
+  freezing mid-motion at an arbitrary instant, there's a brief
+  (~1.5s) settle window first where things keep animating so whatever
+  was already in motion can finish naturally, and only then does the
+  scene reset to its defined neutral pose (e.g. the logo's rotation
+  returns to its initial, untilted orientation) and hold there.
+  Manually switching scenes (keys 1-5) or a MIDI program-change message
+  always works immediately regardless of any of this — only each
+  scene's own content freezes, never the ability to change which scene
+  is on screen. See `WAIT_FOR_MIDI_BEFORE_ANIMATING`,
+  `MIDI_ACTIVITY_TIMEOUT_SECONDS`, and `MIDI_SETTLE_DURATION_SECONDS`
   in `config.py`.
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
   bursts/pulses depending on the active scene; CC1, CC74, CC71, CC7
