@@ -120,20 +120,32 @@ class SceneManager:
         self.crossfade_elapsed = 0.0
         print(f"Switching scene: {self.current_name} -> {target_name}")
 
-    def update_and_render(self, dt, midi, camera, screen_fbo):
+    def update_and_render(self, dt, midi, camera, screen_fbo, freeze=False):
+        """Renders the current (and, mid-crossfade, next) scene.
+
+        `freeze=True` skips calling update() on any scene and skips
+        advancing the crossfade timer — render() still runs, so
+        whatever was last computed keeps being redrawn as a static
+        frame, rather than the screen going blank. Used to hold everything
+        on a static frame until MIDI is actually being received (see
+        main.py) rather than animating from the moment the app launches.
+        """
         if midi.program_change is not None:
             self.handle_program_change(midi.program_change)
 
         current_scene = self.scenes[self.current_name]
-        current_scene.update(dt, midi, camera)
+        if not freeze:
+            current_scene.update(dt, midi, camera)
         current_scene.render(self.fbo_current)
 
         if self.crossfading:
             next_scene = self.scenes[self.next_name]
-            next_scene.update(dt, midi, camera)
+            if not freeze:
+                next_scene.update(dt, midi, camera)
             next_scene.render(self.fbo_next)
 
-            self.crossfade_elapsed += dt
+            if not freeze:
+                self.crossfade_elapsed += dt
             alpha = min(self.crossfade_elapsed / CROSSFADE_DURATION, 1.0)
 
             screen_fbo.use()

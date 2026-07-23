@@ -47,6 +47,10 @@ python3 main.py
   video player) and reappears instantly on any movement — see
   `CURSOR_IDLE_HIDE_SECONDS` in `config.py` to change the delay or
   disable it entirely.
+- By default, every scene stays on a static frame (nothing animates,
+  including the shared camera's own drift) until MIDI is actually being
+  received from a connected device — see `WAIT_FOR_MIDI_BEFORE_ANIMATING`
+  in `config.py` to disable this and always animate immediately.
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
   bursts/pulses depending on the active scene; CC1, CC74, CC71, CC7
   control color/intensity/trail-length/brightness; program-change
@@ -88,7 +92,7 @@ mapping and are now deliberately kept separate) — adjust
 | `scenes/particle_burst.py` | House-of-Cards-style point cloud: high density, per-instrument-channel color, erratic fade-out, camera parallax |
 | `scenes/feedback_trails.py` | Smoky feedback-loop trails: soft multi-tap blur, slow dual bg/fg blobs, long release |
 | `scenes/noise_field.py` | Breathing organic noise field: layered bg/fg noise planes, long ripple sustain, camera parallax |
-| `scenes/logo_video_pulse.py` | The spin-loop video as a real 3D-projected plane with a subtle glitch effect, over a minimal background of just a glowing braid and a pad-triggered fractal — deliberately isolated to these 3 elements |
+| `scenes/logo_video_pulse.py` | The spin-loop video as a real 3D-projected plane with a subtle glitch effect, over a glowing braid background. (The fractal background element was removed entirely after repeated issues — being rebuilt from scratch.) |
 | `scenes/kaleidoscope_video.py` | The spin-loop video through a mirrored kaleidoscope, with seigaiha waves, asanoha lattice, drifting sakura petals, a gold mandala ring, and "温泉" characters that pop in sequence around the boundary, timed to MIDI Clock |
 | `assets/onsen1.png`, `assets/onsen2.png` | Individual "温" / "泉" glyph textures used by `kaleidoscope_video.py` |
 | `assets/oca_spin_loop_v3.mp4` | Source video used by `logo_video_pulse.py` |

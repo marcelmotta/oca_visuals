@@ -12,6 +12,29 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v33 — 2026-07-22 — Fractal removed from scene 4 entirely, static-until-MIDI feature added
+
+- **Scene 4 — fractal background removed completely**, per feedback
+  that the "black animation tied to channel 10" persisted despite
+  several fix attempts (brightness floor, removing an artifact-
+  introducing clear zone, a persistent baseline tint). Rather than
+  patch the same system again, it's been pulled out entirely — the
+  scene is now just the logo (3D plane + glitch) and the braid, as a
+  clean foundation to rebuild the fractal from scratch on.
+- **New feature: stay on a static frame until MIDI arrives.** By
+  default, every scene (and the shared camera's own autonomous drift)
+  now stays completely still from launch until MIDI is actually
+  received from a connected device — a one-way latch, so ordinary gaps
+  /silence between notes afterward don't re-freeze the show. Toggle via
+  `WAIT_FOR_MIDI_BEFORE_ANIMATING` in `config.py`. While implementing
+  this, a static-analysis pass caught a real crash risk: `render()` in
+  three scenes (`feedback_trails`, `kaleidoscope_video`, `noise_field`)
+  depended on attributes only ever set inside `update()` — since the
+  new feature can call `render()` before `update()` has run even once,
+  this would have crashed on the very first frame. Fixed by giving all
+  of them safe defaults in `setup()`, verified with the same static
+  analysis afterward.
+
 ## v32 — 2026-07-22 — Denser/stronger wind gust, real cause of "black animation" found
 
 - **Scene 1 — wind gust made denser and more cohesive.** Ambient

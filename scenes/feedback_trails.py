@@ -149,6 +149,13 @@ class FeedbackTrailsScene(Scene):
         self.fg_pos = np.array([0.5, 0.5], dtype="f4")
         self.pulse = 0.0
         self.camera = None
+        # Safe defaults so render() never crashes if called before
+        # update() has run even once (e.g. the app starts frozen,
+        # waiting for MIDI, and only render() runs each frame until then).
+        self.decay = 0.95
+        self.blur_amount = 1.5
+        self.bg_color = np.array([0.0, 0.0, 0.0], dtype="f4")
+        self.fg_color = np.array([0.0, 0.0, 0.0], dtype="f4")
 
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.logo_overlay = HollowLogoOverlay(ctx, project_root)

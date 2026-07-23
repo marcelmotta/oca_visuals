@@ -29,7 +29,7 @@ import moderngl
 
 from config import (
     WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, FULLSCREEN, TARGET_FPS,
-    CURSOR_IDLE_HIDE_SECONDS,
+    CURSOR_IDLE_HIDE_SECONDS, WAIT_FOR_MIDI_BEFORE_ANIMATING,
 )
 from midi_input import MidiState, open_midi_port, poll_midi
 from scene_manager import SceneManager
@@ -166,7 +166,13 @@ def main():
                 midi_reconnect_timer = 0.0
                 midi_port = open_midi_port(midi_state, quiet=True)
 
-        camera.update(dt, midi_state)
+        # Stay on a static frame (nothing animates, including the shared
+        # camera's own autonomous drift) until MIDI has actually started
+        # arriving, if configured to do so.
+        freeze = WAIT_FOR_MIDI_BEFORE_ANIMATING and not midi_state.midi_active
+
+        if not freeze:
+            camera.update(dt, midi_state)
 
         if CURSOR_IDLE_HIDE_SECONDS is not None and not cursor_state["hidden"]:
             if now - cursor_state["last_move_time"] >= CURSOR_IDLE_HIDE_SECONDS:
@@ -180,7 +186,7 @@ def main():
         # it's correct again right before drawing to the actual screen.
         ctx.viewport = (0, 0, *glfw.get_framebuffer_size(window))
         ctx.clear(0.0, 0.0, 0.0, 1.0)
-        scene_manager.update_and_render(dt, midi_state, camera, ctx.screen)
+        scene_manager.update_and_render(dt, midi_state, camera, ctx.screen, freeze=freeze)
 
         glfw.swap_buffers(window)
 

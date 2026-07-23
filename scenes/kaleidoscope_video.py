@@ -325,6 +325,10 @@ class KaleidoscopeVideoScene(Scene):
         self.rotation = 0.0
         self.segments = 8.0
         self.camera = None
+        # Safe defaults so render() never crashes if called before
+        # update() has run even once.
+        self.hue = 0.0
+        self.punch = 0.0
         self.bg_active = 0.0
 
     def _prepare_frame(self, frame_bgr):

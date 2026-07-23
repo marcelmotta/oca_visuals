@@ -35,6 +35,16 @@ TARGET_FPS = 60
 # back instantly. Set to None to disable and always show the cursor.
 CURSOR_IDLE_HIDE_SECONDS = 2.0
 
+# If True, every scene stays on a static frame (nothing animates) until
+# MIDI is actually being received from a connected device — useful so
+# the output doesn't start moving/cycling on its own before the show's
+# MIDI source is plugged in and sending. Once any channel-based MIDI
+# message ever arrives, this switches on permanently for the rest of
+# the run (it does not re-freeze if MIDI goes quiet again afterward —
+# ordinary gaps/silence between notes are expected and shouldn't stop
+# the show). Set to False to always animate immediately on launch.
+WAIT_FOR_MIDI_BEFORE_ANIMATING = True
+
 # A note on 4K performance: the shader work (noise, the Julia-set
 # fractal, particle rendering) scales with pixel count, and 4K has
 # ~9x the pixels of 720p. On a discrete GPU or Apple Silicon this is

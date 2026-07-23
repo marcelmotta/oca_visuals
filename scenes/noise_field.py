@@ -200,6 +200,11 @@ class NoiseFieldScene(Scene):
         self.pulse_age = np.full(MAX_PULSES, 999.0, dtype="f4")
         self.pulse_cursor = 0
         self.camera = None
+        # Safe defaults so render() never crashes if called before
+        # update() has run even once.
+        self.speed = 0.3
+        self.hue = 0.0
+        self.brightness = 0.8
 
         # Autonomous "droplets": ripples that pop in on their own at
         # random screen positions, independent of any MIDI trigger —

@@ -3,41 +3,29 @@ logo_video_pulse.py
 --------------------
 Scene: the spin-loop video rendered as a real 3D-projected plane
 (genuine camera-angle perspective, with a subtle glitch effect), over a
-minimal background of just two elements:
+background of just one element: a translucent, glowing braid of
+slowly-moving strands across the horizon (a thick "pipe" plus a thin,
+erratically-wandering sliver of light flowing through it).
 
-1. A translucent, glowing braid of slowly-moving strands across the
-   horizon (a thick "pipe" plus a thin, erratically-wandering sliver of
-   light flowing through it).
-2. A slowly-morphing Julia-set fractal, triggered into bloom by the
-   "pads" channel (10) rather than cycling automatically — two
-   overlapping bloom cells with randomized origins so consecutive
-   blooms vary in position and blend into each other, plus a protected
-   "clear zone" near the center so the fractal never fully covers the
-   area right behind the logo even at peak bloom.
-
-This is a deliberately minimal version — earlier iterations also had a
-noise-wash background layer and two particle-burst systems (a
-background pixel-cloud and a percussion-triggered per-character burst),
-which were removed to isolate the scene down to just these three
-elements: the braid, the animated/glitching logo, and the fractal
-background.
-
-This file is fully self-contained (previously shared some shader code
-with logo_pulse.py/"scene 4", which has been removed from the project).
+The fractal background system that used to live here has been removed
+entirely — despite several fix attempts (a brightness floor, removing
+an artifact-introducing "clear zone," a persistent baseline tint), a
+"black animation tied to channel 10 (pads)" was still being reported.
+Rather than attempt yet another patch on the same system, it was pulled
+out completely so the fractal can be rebuilt from scratch as its own
+piece of work, on a clean slate with just the logo + braid as the
+foundation.
 
 MIDI mapping:
 - "keys" channel CC -> hue.
-- "bass" channel CC -> a mild speed influence on the camera tilt.
 - "drums" channel triggers -> a brief camera "punch" (via the shared
   Camera object) that nudges the logo's tilt.
-- "pads" channel (10) triggers -> starts a new fractal bloom.
 """
 
 import math
 import os
 import numpy as np
 import moderngl
-import cv2
 
 from scene_base import Scene
 from utils import make_fullscreen_quad_vao
@@ -50,7 +38,7 @@ VIDEO_PATH = os.path.join(
 
 MAX_TEXTURE_DIM = 1024
 
-# --- Background pass: braid + fractal only ----------------------------
+# --- Background pass: braid only --------------------------------------
 
 BG_VERTEX = """
 #version 330
@@ -71,8 +59,6 @@ out vec4 f_color;
 uniform float u_time;
 uniform float u_hue;
 uniform float u_aspect;
-uniform vec2 u_bloom_origin[2];
-uniform float u_bloom_phase[2];
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -93,72 +79,12 @@ vec3 hsv2rgb(vec3 c) {
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
-// A Julia-set fractal, slowly animated by moving its constant `c` around
-// a small circle so the pattern continuously morphs.
-float julia(vec2 z, vec2 c) {
-    const int MAX_ITER = 40;
-    float iter = 0.0;
-    for (int i = 0; i < MAX_ITER; i++) {
-        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
-        if (dot(z, z) > 4.0) break;
-        iter += 1.0;
-    }
-    return iter / float(MAX_ITER);
-}
-
 void main() {
     vec2 uv = v_uv * 2.0 - 1.0;
     uv.x *= u_aspect;
 
-    // A persistent dim baseline tint — WITHOUT this, the background
-    // was pure black everywhere the bloom hadn't (yet) revealed, which
-    // is most of the screen most of the time: before any pad trigger
-    // has ever fired, bloom_mask is 0 everywhere (permanently, verified
-    // numerically), so the fractal contributes nothing at all. Once
-    // triggers DO start arriving, the traveling reveal wave creates a
-    // moving boundary between that black "unrevealed" region and the
-    // (now dim-floor-lit) "revealed" one — which is what was actually
-    // being seen as "a black animation tied to channel 10": the trigger
-    // itself wasn't drawing something black, it was the only thing
-    // that ever made the permanently-black background move at all.
+    // Dim baseline tint so the background is never pure black.
     vec3 color = hsv2rgb(vec3(u_hue, 0.5, 0.08));
-
-    // --- Fractal, with pad-triggered dual bloom cells ---
-    vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));
-    float f = julia(uv * 1.1, julia_c);
-    // A Julia set's escaped region (the vast majority of a typical view
-    // — verified numerically at ~99% of the screen) evaluates to near-
-    // zero iteration count, which made f*f render as almost total black
-    // there. With a pure-black base color and no other fill layer, that
-    // meant the "fractal background" was actually black across nearly
-    // the whole screen almost all the time — reported as "a black blur
-    // disrupting the background." A brightness floor keeps a dim ambient
-    // glow everywhere instead of dropping all the way to black,
-    // verified numerically to eliminate near-black pixels entirely.
-    float fractal_val = mix(0.15, 1.0, f * f);
-    vec3 fractal_color = hsv2rgb(vec3(fract(u_hue + 0.15 + f * 0.3), 0.65, fractal_val));
-
-    float bloom_mask = 0.0;
-    for (int i = 0; i < 2; i++) {
-        float cycle = 1.0 - abs(2.0 * u_bloom_phase[i] - 1.0);
-        vec2 rel = uv - u_bloom_origin[i];
-        float dist_sq = dot(rel, rel);
-        float wave_pos = mix(2.3, -0.3, cycle);
-        float mask = smoothstep(wave_pos - 0.9, wave_pos, dist_sq);
-        bloom_mask = max(bloom_mask, mask);
-    }
-    // NOTE: an earlier version added a static radial "clear zone" here
-    // to keep the fractal from fully covering the area behind the logo
-    // at peak bloom. That approach backfired: since `color` starts at
-    // pure black and the fractal is the only thing that can light up
-    // that region, suppressing it there created a permanent black disc
-    // at screen center — reported as "a black blur in the same layer as
-    // the fractal background." Fixed properly by simply capping the
-    // fractal's overall intensity lower (0.65 -> 0.4) instead of
-    // creating an artificial static hole — it still blooms across the
-    // whole screen, just never gets bright/dominant enough to visually
-    // fight with the logo, and there's no fixed dark patch anywhere.
-    color += fractal_color * bloom_mask * 0.4;
 
     // --- Braid: thick "pipe" + thin flowing sliver ---
     vec3 braid_color = hsv2rgb(vec3(fract(u_hue + 0.55), 0.45, 1.0));
@@ -320,24 +246,13 @@ class LogoVideoPulseScene(Scene):
         self.distance = half_h / math.tan(self.fov / 2.0)
 
         self.time = 0.0
+        self.hue = 0.0
         self.camera = None
 
         # Random, infrequent, brief glitch.
         self.next_glitch_time = np.random.uniform(10.0, 25.0)
         self.glitch_active_until = 0.0
         self.glitch_seed = 0.0
-
-        # Fractal bloom triggered by channel 10 ("pads"). Two cells: a
-        # new trigger shifts the current bloom into a "previous" cell
-        # that keeps fading out on its own while a fresh one (new random
-        # origin) starts fading in, so consecutive triggers blend into
-        # each other instead of cutting off abruptly.
-        self.bloom_trigger_duration = 7.0
-        self.bloom_cell_start = [-9999.0, -9999.0]
-        self.bloom_cell_origin = [self._random_bloom_origin(), self._random_bloom_origin()]
-
-    def _random_bloom_origin(self):
-        return (float(np.random.uniform(-0.55, 0.55)), float(np.random.uniform(-0.45, 0.45)))
 
     def update(self, dt, midi, camera):
         self.time += dt
@@ -346,17 +261,6 @@ class LogoVideoPulseScene(Scene):
 
         autonomous_hue = (self.time * 0.006) % 1.0
         self.hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
-
-        if midi.role_triggers("pads"):
-            self.bloom_cell_start[1] = self.bloom_cell_start[0]
-            self.bloom_cell_origin[1] = self.bloom_cell_origin[0]
-            self.bloom_cell_start[0] = self.time
-            self.bloom_cell_origin[0] = self._random_bloom_origin()
-
-        self.bloom_cell_phase = [
-            min((self.time - start) / self.bloom_trigger_duration, 1.0)
-            for start in self.bloom_cell_start
-        ]
 
         if self.time >= self.next_glitch_time and self.time >= self.glitch_active_until:
             duration = np.random.uniform(0.18, 0.4)
@@ -372,8 +276,6 @@ class LogoVideoPulseScene(Scene):
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
         self.bg_program["u_aspect"] = target.size[0] / target.size[1]
-        self.bg_program["u_bloom_origin"] = self.bloom_cell_origin
-        self.bg_program["u_bloom_phase"] = self.bloom_cell_phase
         self.bg_vao.render(moderngl.TRIANGLES)
 
         cam_time = cam.time if cam else self.time
