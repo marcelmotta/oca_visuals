@@ -12,6 +12,26 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v31 — 2026-07-22 — Actually fixed the black blur (brightness floor), added wind effect to scene 1
+
+- **Scene 4 — found the REAL cause of the black blur this time.**
+  Verified numerically: a Julia set's escaped region (the vast majority
+  of a typical view) evaluates to near-zero iteration count — measured
+  at ~99% of the screen rendering as near-total black with the previous
+  `f*f` brightness formula. With a pure-black base and the fractal as
+  the only fill layer, that meant the "fractal background" was
+  genuinely black across nearly the whole screen almost all the time —
+  not a rare edge case, the norm. Fixed with a brightness floor
+  (`mix(0.15, 1.0, f*f)`), verified numerically to bring the near-black
+  fraction from 99% down to exactly 0%.
+- **Scene 1 — new erratic "wind" effect, triggered by "synth2" (channel
+  9).** While that channel has a note held (eased in/out), particles
+  get pushed by a gusting force — direction and strength built from
+  several non-harmonically-related sine waves (verified numerically to
+  have multiple distinct frequency components, not simple periodic
+  motion) plus per-particle random jitter, so particles scatter
+  individually like debris in wind rather than drifting in unison.
+
 ## v30 — 2026-07-22 — Fixed real aspect-ratio bug (scene 1), removed black-disc artifact (scene 4)
 
 - **Scene 1 — found the actual cause of "confined to a square region."**

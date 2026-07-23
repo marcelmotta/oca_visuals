@@ -197,6 +197,7 @@ class ParticleBurstScene(Scene):
         self.emit_accum = 0.0
         self.time = 0.0
         self.camera = None
+        self.wind_amount = 0.0
         # The vertex shader divides x by u_aspect at the very end (to
         # keep swirl/burst motion circular rather than elliptical) — so
         # spawn positions need to be scaled by this SAME aspect ratio,
@@ -352,6 +353,35 @@ class ParticleBurstScene(Scene):
 
         self.velocity[alive] += swirl_dir[alive] * swirl_strength * dt
         self.velocity[alive] += (-self.position[alive]) * 0.04 * dt
+
+        # Wind: an erratic, gusting force (like particles being blown
+        # around rather than smoothly swirling), active only while
+        # "synth2" (channel 9) has a note held — eased in/out so it
+        # doesn't snap on/off abruptly.
+        synth2_active = bool(midi.role_active_notes("synth2"))
+        wind_target = 1.0 if synth2_active else 0.0
+        ease_rate = 2.5 if synth2_active else 1.2
+        self.wind_amount += (wind_target - self.wind_amount) * min(dt * ease_rate, 1.0)
+
+        if self.wind_amount > 0.001:
+            t = self.time
+            # Several non-harmonically-related sine waves combined, for
+            # a direction/strength that shifts erratically like gusts
+            # rather than a single smooth oscillation.
+            wind_angle = (math.sin(t * 0.7) * 1.3 + math.sin(t * 1.9 + 1.0) * 0.6
+                          + math.sin(t * 3.3 + 2.5) * 0.3)
+            gust = 0.5 + 0.5 * math.sin(t * 2.3) * math.sin(t * 0.5 + 1.0)
+            wind_strength = self.wind_amount * (0.5 + gust * 1.0) * 1.4
+            wind_dir = np.array([math.cos(wind_angle), math.sin(wind_angle)], dtype="f4")
+
+            self.velocity[alive, 0] += wind_dir[0] * wind_strength * dt
+            self.velocity[alive, 1] += wind_dir[1] * wind_strength * dt
+            # Per-particle random jitter on top of the shared gust
+            # direction, so particles scatter individually (like debris
+            # in wind) rather than all drifting in perfect unison.
+            n_alive = int(alive.sum())
+            wind_jitter = np.random.uniform(-1.0, 1.0, (n_alive, 2)).astype("f4")
+            self.velocity[alive, 0:2] += wind_jitter * wind_strength * 0.5 * dt
 
         # Erratic jitter during the fade-out: as a particle nears the end
         # of its life, it gets an increasingly chaotic random kick each
