@@ -35,15 +35,25 @@ TARGET_FPS = 60
 # back instantly. Set to None to disable and always show the cursor.
 CURSOR_IDLE_HIDE_SECONDS = 2.0
 
-# If True, every scene stays on a static frame (nothing animates) until
-# MIDI is actually being received from a connected device — useful so
-# the output doesn't start moving/cycling on its own before the show's
-# MIDI source is plugged in and sending. Once any channel-based MIDI
-# message ever arrives, this switches on permanently for the rest of
-# the run (it does not re-freeze if MIDI goes quiet again afterward —
-# ordinary gaps/silence between notes are expected and shouldn't stop
-# the show). Set to False to always animate immediately on launch.
+# If True, every scene's own animated content (particle motion, hue
+# drift, camera reactions, etc.) stays frozen on a static frame whenever
+# MIDI hasn't been active recently — and un-freezes again as soon as it
+# resumes. This can toggle on/off as many times as needed over a run
+# (e.g. it re-freezes if the MIDI source stops sending, then un-freezes
+# again once it resumes) — see MIDI_ACTIVITY_TIMEOUT_SECONDS below for
+# how "recently" is defined. Manually switching scenes (keys 1-5) or a
+# MIDI program-change message always works immediately regardless of
+# this — only each scene's own content freezes, never the ability to
+# change which scene is on screen. Set to False to always animate.
 WAIT_FOR_MIDI_BEFORE_ANIMATING = True
+
+# How long (in seconds) without any channel-based MIDI message before
+# WAIT_FOR_MIDI_BEFORE_ANIMATING considers the input "gone quiet" again
+# and re-freezes. Long enough that ordinary rests/gaps between notes
+# during normal playing don't cause flickering between frozen/animated;
+# short enough to actually reflect "playing has stopped" reasonably
+# promptly.
+MIDI_ACTIVITY_TIMEOUT_SECONDS = 5.0
 
 # A note on 4K performance: the shader work (noise, the Julia-set
 # fractal, particle rendering) scales with pixel count, and 4K has

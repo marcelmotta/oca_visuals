@@ -12,6 +12,28 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v34 — 2026-07-22 — Static-until-MIDI reworked: repeatable toggle + scene-switching always works
+
+- **Found that the previous version's fix had never actually been
+  shipped.** The v33 zip that was sent only had the original one-way
+  latch (freezes once at launch, never re-freezes) — a proper rework
+  was already sitting in the project as uncommitted changes, never
+  packaged. This version finishes and ships that work, verified before
+  committing rather than assumed correct.
+- **Freeze now toggles repeatedly, not a one-way switch.** Tracks time
+  since the last channel-based MIDI message; if none arrives for
+  `MIDI_ACTIVITY_TIMEOUT_SECONDS` (default 5s), the show freezes again,
+  and un-freezes the moment MIDI resumes — verified numerically across
+  a simulated multi-cycle on/off/on/off sequence.
+- **Scene switching (keyboard or MIDI program-change) now always works
+  immediately, even while frozen.** The crossfade timer advances
+  unconditionally regardless of freeze state — only each scene's own
+  animated content (particle motion, hue drift, etc.) freezes, never
+  the ability to change which scene is showing.
+- Re-ran the earlier static-analysis safety check (render() depending
+  on update()-only attributes) against the current state to confirm
+  nothing regressed.
+
 ## v33 — 2026-07-22 — Fractal removed from scene 4 entirely, static-until-MIDI feature added
 
 - **Scene 4 — fractal background removed completely**, per feedback

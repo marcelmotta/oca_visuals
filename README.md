@@ -47,10 +47,16 @@ python3 main.py
   video player) and reappears instantly on any movement — see
   `CURSOR_IDLE_HIDE_SECONDS` in `config.py` to change the delay or
   disable it entirely.
-- By default, every scene stays on a static frame (nothing animates,
-  including the shared camera's own drift) until MIDI is actually being
-  received from a connected device — see `WAIT_FOR_MIDI_BEFORE_ANIMATING`
-  in `config.py` to disable this and always animate immediately.
+- By default, each scene's own animated content freezes on a static
+  frame whenever MIDI hasn't been active recently, and un-freezes the
+  moment it resumes — this toggles on/off as many times as needed over
+  a run (e.g. it re-freezes if the source stops sending, then wakes
+  back up once it resumes), not a one-way switch. Manually switching
+  scenes (keys 1-5) or a MIDI program-change message always works
+  immediately regardless of this — only each scene's own content
+  freezes, never the ability to change which scene is on screen. See
+  `WAIT_FOR_MIDI_BEFORE_ANIMATING` and `MIDI_ACTIVITY_TIMEOUT_SECONDS`
+  in `config.py`.
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
   bursts/pulses depending on the active scene; CC1, CC74, CC71, CC7
   control color/intensity/trail-length/brightness; program-change

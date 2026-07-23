@@ -123,12 +123,18 @@ class SceneManager:
     def update_and_render(self, dt, midi, camera, screen_fbo, freeze=False):
         """Renders the current (and, mid-crossfade, next) scene.
 
-        `freeze=True` skips calling update() on any scene and skips
-        advancing the crossfade timer — render() still runs, so
-        whatever was last computed keeps being redrawn as a static
-        frame, rather than the screen going blank. Used to hold everything
-        on a static frame until MIDI is actually being received (see
-        main.py) rather than animating from the moment the app launches.
+        `freeze=True` skips calling update() on any scene — render()
+        still runs, so whatever was last computed keeps being redrawn as
+        a static frame. Used to hold each scene's own animated content
+        (particle motion, hue drift, camera reactions, etc.) still until
+        MIDI is actually being received (see main.py).
+
+        IMPORTANT: crossfading itself (switching which scene is shown)
+        is NEVER gated by `freeze` — manually switching scenes (keys
+        1-5) or a MIDI program-change message must always work
+        immediately, even with no MIDI signal currently active. Only
+        the CONTENT of each scene freezes, never the ability to change
+        which scene is on screen.
         """
         if midi.program_change is not None:
             self.handle_program_change(midi.program_change)
@@ -144,8 +150,7 @@ class SceneManager:
                 next_scene.update(dt, midi, camera)
             next_scene.render(self.fbo_next)
 
-            if not freeze:
-                self.crossfade_elapsed += dt
+            self.crossfade_elapsed += dt
             alpha = min(self.crossfade_elapsed / CROSSFADE_DURATION, 1.0)
 
             screen_fbo.use()

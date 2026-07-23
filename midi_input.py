@@ -64,13 +64,14 @@ class MidiState:
         channel_note_triggers (dict[int, set[int]]): per-channel note-on
             events fired THIS FRAME ONLY.
         channel_active_notes (dict[int, set[int]]): per-channel held notes.
-        midi_active (bool): becomes True the first time ANY MIDI message
-            of any kind is received on any channel, and stays True for
-            the rest of the run (a one-way latch, not "is data arriving
-            RIGHT NOW" — natural gaps/silence between notes shouldn't
-            freeze the show back up). Scenes/main.py use this to keep
-            everything on a static frame until the show's MIDI source is
-            actually connected and sending something.
+        message_received_this_frame (bool): True for exactly one frame
+            whenever a channel-based MIDI message (note, CC, program
+            change — not channel-less messages like clock) arrived
+            during that frame. main.py uses this to track a rolling
+            "has MIDI been active recently" timeout, which can toggle on
+            and off repeatedly as playing starts/stops — this is a
+            momentary flag, not a permanent latch, deliberately, so that
+            behavior can live entirely in main.py.
     """
 
     def __init__(self):
@@ -78,7 +79,7 @@ class MidiState:
         self.note_triggers = set()
         self.active_notes = set()
         self.program_change = None
-        self.midi_active = False
+        self.message_received_this_frame = False
 
         self.channel_cc = {ch: {} for ch in range(NUM_CHANNELS)}
         self.channel_note_triggers = {ch: set() for ch in range(NUM_CHANNELS)}
@@ -92,6 +93,7 @@ class MidiState:
         self.note_triggers = set()
         self.program_change = None
         self.triplet_tick_pending = False
+        self.message_received_this_frame = False
         for ch in range(NUM_CHANNELS):
             self.channel_note_triggers[ch] = set()
 
@@ -208,13 +210,13 @@ def poll_midi(port, state: MidiState):
     for msg in pending:
         ch = getattr(msg, "channel", None)  # 0-15, or None for sysex/etc.
 
-        # Latches on the first channel-based message ever received (note,
-        # CC, program change — not clock/other channel-less system
+        # Flags THIS FRAME as having real MIDI activity (note, CC,
+        # program change — not clock/other channel-less system
         # messages, since "from any of the channels" implies an actual
-        # channel). This is what scenes/main.py check to know whether to
-        # stay on a static frame or start animating.
+        # channel). main.py turns this into a rolling recent-activity
+        # timeout that can toggle on/off repeatedly, not a one-way latch.
         if ch is not None:
-            state.midi_active = True
+            state.message_received_this_frame = True
 
         if MIDI_DEBUG and msg.type != "clock":
             ch_display = ch + 1 if ch is not None else "-"  # show as 1-16, matching gear displays

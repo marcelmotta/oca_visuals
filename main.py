@@ -30,6 +30,7 @@ import moderngl
 from config import (
     WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, FULLSCREEN, TARGET_FPS,
     CURSOR_IDLE_HIDE_SECONDS, WAIT_FOR_MIDI_BEFORE_ANIMATING,
+    MIDI_ACTIVITY_TIMEOUT_SECONDS,
 )
 from midi_input import MidiState, open_midi_port, poll_midi
 from scene_manager import SceneManager
@@ -144,6 +145,13 @@ def main():
     MIDI_RECONNECT_INTERVAL = 3.0
     midi_reconnect_timer = 0.0
 
+    # Rolling "has MIDI been active recently" tracker for
+    # WAIT_FOR_MIDI_BEFORE_ANIMATING — starts far enough in the past that
+    # the show is frozen from launch, and updates every time a
+    # channel-based message arrives, so it can toggle freeze on/off
+    # repeatedly as playing starts and stops, rather than a one-way switch.
+    last_midi_activity_time = -MIDI_ACTIVITY_TIMEOUT_SECONDS * 2
+
     while not glfw.window_should_close(window):
         glfw.poll_events()
 
@@ -166,10 +174,15 @@ def main():
                 midi_reconnect_timer = 0.0
                 midi_port = open_midi_port(midi_state, quiet=True)
 
-        # Stay on a static frame (nothing animates, including the shared
-        # camera's own autonomous drift) until MIDI has actually started
-        # arriving, if configured to do so.
-        freeze = WAIT_FOR_MIDI_BEFORE_ANIMATING and not midi_state.midi_active
+        if midi_state.message_received_this_frame:
+            last_midi_activity_time = now
+        midi_recently_active = (now - last_midi_activity_time) < MIDI_ACTIVITY_TIMEOUT_SECONDS
+
+        # Freezes each scene's own animated content (not scene-switching
+        # — see scene_manager.update_and_render's docstring) whenever
+        # MIDI hasn't been active recently. Toggles on/off repeatedly as
+        # playing starts/stops, not a one-way switch.
+        freeze = WAIT_FOR_MIDI_BEFORE_ANIMATING and not midi_recently_active
 
         if not freeze:
             camera.update(dt, midi_state)
