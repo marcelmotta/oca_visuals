@@ -110,7 +110,18 @@ void main() {
     vec2 uv = v_uv * 2.0 - 1.0;
     uv.x *= u_aspect;
 
-    vec3 color = vec3(0.0);
+    // A persistent dim baseline tint — WITHOUT this, the background
+    // was pure black everywhere the bloom hadn't (yet) revealed, which
+    // is most of the screen most of the time: before any pad trigger
+    // has ever fired, bloom_mask is 0 everywhere (permanently, verified
+    // numerically), so the fractal contributes nothing at all. Once
+    // triggers DO start arriving, the traveling reveal wave creates a
+    // moving boundary between that black "unrevealed" region and the
+    // (now dim-floor-lit) "revealed" one — which is what was actually
+    // being seen as "a black animation tied to channel 10": the trigger
+    // itself wasn't drawing something black, it was the only thing
+    // that ever made the permanently-black background move at all.
+    vec3 color = hsv2rgb(vec3(u_hue, 0.5, 0.08));
 
     // --- Fractal, with pad-triggered dual bloom cells ---
     vec2 julia_c = 0.7885 * vec2(cos(u_time * 0.03), sin(u_time * 0.03));

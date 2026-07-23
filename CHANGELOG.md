@@ -12,6 +12,31 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v32 — 2026-07-22 — Denser/stronger wind gust, real cause of "black animation" found
+
+- **Scene 1 — wind gust made denser and more cohesive.** Ambient
+  particle spawn rate now boosts substantially while wind is active
+  (up to +220/sec on top of the base rate), so there's enough material
+  in the air for the gust to read as a moving mass rather than a few
+  sparse points getting nudged. Overall push strength increased (~1.7x)
+  and per-particle jitter increased for more visible dispersion, while
+  the shared directional term still keeps it reading as one gust.
+- **Scene 4 — audited every use of channel 11 ("texture"/"sampler") in
+  the project as requested**: it's referenced only in scenes 1 and 3
+  (unrelated files) — not anywhere in scene 4's code. That check led to
+  the actual mechanism, though: verified numerically that without any
+  pad (channel 10) trigger ever firing, the fractal's bloom stays
+  permanently at zero — the background is pure black (except the
+  braid) the entire time, by construction. Channel 10 triggers are the
+  ONLY thing that ever makes that permanently-black background move at
+  all (via the traveling reveal wave), which is what was actually being
+  seen as "a black animation tied to channel 10" — not something drawn
+  by the trigger, but the only thing that ever animates an otherwise
+  permanently-black background. Fixed with a persistent dim baseline
+  tint so the background is never pure black in the first place,
+  whether the bloom is dormant or actively cycling — verified the
+  baseline is always above zero brightness.
+
 ## v31 — 2026-07-22 — Actually fixed the black blur (brightness floor), added wind effect to scene 1
 
 - **Scene 4 — found the REAL cause of the black blur this time.**

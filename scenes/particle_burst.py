@@ -299,6 +299,14 @@ class ParticleBurstScene(Scene):
         bass_intensity = midi.role_cc("bass", "intensity", 0.5)
         flow_speed = 0.5 + bass_intensity * 1.8
 
+        # Wind easing (computed here, early, so it can also boost spawn
+        # density below — applied to velocity further down in the
+        # physics integration step).
+        synth2_active = bool(midi.role_active_notes("synth2"))
+        wind_target = 1.0 if synth2_active else 0.0
+        ease_rate = 2.5 if synth2_active else 1.2
+        self.wind_amount += (wind_target - self.wind_amount) * min(dt * ease_rate, 1.0)
+
         # Color keeps evolving on its own even with no hands on a knob —
         # the "keys" CC shifts it further on top of a slow, continuous
         # autonomous drift, so the palette is always alive.
@@ -306,8 +314,11 @@ class ParticleBurstScene(Scene):
         keys_hue = (autonomous_hue + midi.role_cc("keys", "color_shift", 0.0)) % 1.0
 
         # 1. Continuous ambient background stream — higher base rate for
-        # a noticeably denser field than before.
-        base_rate = 45.0 + 90.0 * bass_intensity
+        # a noticeably denser field than before. Boosted further while
+        # wind is active: a gust needs enough particles in the air to
+        # actually read as a cohesive moving mass rather than a few
+        # sparse points getting nudged.
+        base_rate = 45.0 + 90.0 * bass_intensity + self.wind_amount * 220.0
         self.emit_accum += dt * base_rate
         spawn_n = int(self.emit_accum)
         if spawn_n > 0:
@@ -357,12 +368,8 @@ class ParticleBurstScene(Scene):
         # Wind: an erratic, gusting force (like particles being blown
         # around rather than smoothly swirling), active only while
         # "synth2" (channel 9) has a note held — eased in/out so it
-        # doesn't snap on/off abruptly.
-        synth2_active = bool(midi.role_active_notes("synth2"))
-        wind_target = 1.0 if synth2_active else 0.0
-        ease_rate = 2.5 if synth2_active else 1.2
-        self.wind_amount += (wind_target - self.wind_amount) * min(dt * ease_rate, 1.0)
-
+        # doesn't snap on/off abruptly. (Easing itself computed earlier,
+        # above, so it could also boost ambient spawn density.)
         if self.wind_amount > 0.001:
             t = self.time
             # Several non-harmonically-related sine waves combined, for
@@ -371,17 +378,21 @@ class ParticleBurstScene(Scene):
             wind_angle = (math.sin(t * 0.7) * 1.3 + math.sin(t * 1.9 + 1.0) * 0.6
                           + math.sin(t * 3.3 + 2.5) * 0.3)
             gust = 0.5 + 0.5 * math.sin(t * 2.3) * math.sin(t * 0.5 + 1.0)
-            wind_strength = self.wind_amount * (0.5 + gust * 1.0) * 1.4
+            # Stronger overall push (was 1.4x) for a more cohesive gust
+            # that visibly carries the field, not just a light nudge.
+            wind_strength = self.wind_amount * (0.5 + gust * 1.0) * 2.4
             wind_dir = np.array([math.cos(wind_angle), math.sin(wind_angle)], dtype="f4")
 
             self.velocity[alive, 0] += wind_dir[0] * wind_strength * dt
             self.velocity[alive, 1] += wind_dir[1] * wind_strength * dt
             # Per-particle random jitter on top of the shared gust
-            # direction, so particles scatter individually (like debris
-            # in wind) rather than all drifting in perfect unison.
+            # direction — increased (was 0.5x) for more visible
+            # dispersion/scatter while the shared directional term above
+            # still keeps the overall motion reading as one cohesive
+            # gust rather than pure noise.
             n_alive = int(alive.sum())
             wind_jitter = np.random.uniform(-1.0, 1.0, (n_alive, 2)).astype("f4")
-            self.velocity[alive, 0:2] += wind_jitter * wind_strength * 0.5 * dt
+            self.velocity[alive, 0:2] += wind_jitter * wind_strength * 0.85 * dt
 
         # Erratic jitter during the fade-out: as a particle nears the end
         # of its life, it gets an increasingly chaotic random kick each
