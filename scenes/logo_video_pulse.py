@@ -3,21 +3,16 @@ logo_video_pulse.py
 --------------------
 Scene: the spin-loop video rendered as a real 3D-projected plane
 (genuine camera-angle perspective, with a subtle glitch effect), over a
-background of just one element: a translucent, glowing braid of
-slowly-moving strands across the horizon (a thick "pipe" plus a thin,
-erratically-wandering sliver of light flowing through it).
-
-The fractal background system that used to live here has been removed
-entirely — despite several fix attempts (a brightness floor, removing
-an artifact-introducing "clear zone," a persistent baseline tint), a
-"black animation tied to channel 10 (pads)" was still being reported.
-Rather than attempt yet another patch on the same system, it was pulled
-out completely so the fractal can be rebuilt from scratch as its own
-piece of work, on a clean slate with just the logo + braid as the
-foundation.
+background of a translucent, glowing braid of slowly-moving strands
+across the horizon (a thick "pipe" plus a thin, erratically-wandering
+sliver of light flowing through it). The folding-fractal bloom that was
+layered on top of the braid this round was pulled back out (still not
+convinced it reads well) and saved as its own scene,
+logo_video_fractal.py — the logo + braid here are unchanged from before
+that experimentation started.
 
 MIDI mapping:
-- "keys" channel CC -> hue.
+- "keys" channel CC -> hue (shared by the braid).
 - "drums" channel triggers -> a brief camera "punch" (via the shared
   Camera object) that nudges the logo's tilt.
 """
@@ -140,8 +135,16 @@ uniform sampler2D u_logo;
 uniform float u_glitch_amount;
 uniform float u_glitch_seed;
 
+#define OUTLINE_THICKNESS 0.004
+#define OUTLINE_SAMPLES 8
+
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float sample_lum(vec2 uv_) {
+    vec3 c = texture(u_logo, vec2(uv_.x, 1.0 - uv_.y)).rgb;
+    return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
 void main() {
@@ -166,6 +169,22 @@ void main() {
     float lum = dot(tex_rgb, vec3(0.299, 0.587, 0.114));
     float alpha = smoothstep(0.35, 0.55, lum);
     if (alpha <= 0.01) discard;
+
+    // Dark rim around the logo's own silhouette so it stays visually
+    // separated from the background regardless of whether the
+    // background's current color happens to closely match the logo's.
+    // Same ring-sample edge-detection technique as hollow_logo.py: if
+    // any nearby sample disagrees with this pixel's inside/outside
+    // classification, this pixel is near the boundary.
+    float center_inside = step(0.45, lum);
+    float edge = 0.0;
+    for (int i = 0; i < OUTLINE_SAMPLES; i++) {
+        float a = 6.2831853 * float(i) / float(OUTLINE_SAMPLES);
+        vec2 offset = vec2(cos(a), sin(a)) * OUTLINE_THICKNESS;
+        if (step(0.45, sample_lum(uv + offset)) != center_inside) edge = 1.0;
+    }
+    tex_rgb = mix(tex_rgb, vec3(0.0), edge * 0.85);
+
     f_color = vec4(tex_rgb, alpha);
 }
 """

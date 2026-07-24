@@ -79,8 +79,7 @@ class Scene(ABC):
         window drag, display change, etc). Default: just remembers the
         new size. Override this if the scene has an internal buffer
         (see `setup()`'s note) that needs recreating to match the new
-        aspect ratio — see particle_burst.py or feedback_trails.py for
-        an example.
+        aspect ratio — see particle_burst.py for an example.
         """
         self.output_width = width
         self.output_height = height

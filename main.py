@@ -16,7 +16,7 @@ background if none is connected yet (or if one disconnects mid-show).
 
 CONTROLS WHILE RUNNING:
 - Press ESC or close the window to quit.
-- Press number keys 1/2/3 to manually switch scenes for testing, even
+- Press number keys 1-6 to manually switch scenes for testing, even
   with no MIDI device connected yet.
 - The mouse cursor auto-hides after a couple seconds of no movement
   (like a video player) and reappears instantly on any movement — see
@@ -25,7 +25,8 @@ CONTROLS WHILE RUNNING:
 Note: an earlier global "freeze everything until MIDI arrives" feature
 was tried here and removed — it didn't work well in practice. MIDI-
 awareness is now handled per-scene instead (see individual scene files
-for any such behavior, e.g. logo_video_pulse.py's rotation).
+for any such behavior, e.g. video_texture.py's freeze-on-quiet, or
+logo_video_fractal.py's background bloom).
 """
 
 import time
@@ -92,7 +93,7 @@ def main():
 
     # Manual scene-switch keys for testing without a MIDI controller.
     key_to_program = {glfw.KEY_1: 0, glfw.KEY_2: 1, glfw.KEY_3: 2, glfw.KEY_4: 3,
-                       glfw.KEY_5: 4}
+                       glfw.KEY_5: 4, glfw.KEY_6: 5}
 
     def key_callback(_window, key, _scancode, action, _mods):
         if action != glfw.PRESS:
@@ -139,7 +140,7 @@ def main():
         glfw.set_cursor_pos_callback(window, cursor_pos_callback)
 
     last_time = time.perf_counter()
-    print("Running. Press ESC to quit, or 1/2/3/4/5 to switch scenes manually.")
+    print("Running. Press ESC to quit, or 1/2/3/4/5/6 to switch scenes manually.")
 
     # MIDI hot-plug: if no device was connected at startup (or one gets
     # unplugged mid-show), retry opening a port every few seconds rather

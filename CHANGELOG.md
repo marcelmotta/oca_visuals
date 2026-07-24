@@ -12,6 +12,345 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v45 — 2026-07-24 — Scene 6: ground mesh triangles now actually shaded (real topography), snappier trigger, more translucent
+
+- **Real per-vertex shading, not a flat color** — per feedback that
+  every triangle showing the same color value "disrupts the 3D feel."
+  The fill vertex shader now derives an actual surface normal from the
+  wobble height field (samples the same height noise a small step away
+  in both ground-plane directions, builds the two implied tangent
+  vectors, crosses them) and computes simple directional lighting from
+  it, so ridges/slopes now genuinely catch or lose light relative to
+  their neighbors — visible shadows and highlights that track the
+  mesh's actual undulation, not a uniform wash.
+- **Caught and fixed a real problem while building this**: the first
+  version used the wobble's true (gentle) slope with a near-overhead
+  light direction, which verified numerically to cluster all normals
+  within a ~0.02-wide band — i.e., shading so subtle it would have
+  looked completely flat again, the same complaint as before. Fixed
+  with two changes verified together: exaggerating the slope used for
+  the normal calculation only (`SHADE_STEEPNESS`, the displayed geometry
+  itself is untouched) and switching to a grazing, mostly-sideways
+  light direction, which is far more sensitive to slope than an
+  overhead one.
+- **That fix then shipped with a second real problem** — per feedback,
+  the shadows "switch on and off suddenly" and looked "randomly
+  placed." Root cause, verified numerically: the shading sampled the
+  FULL wobble height field (both noise octaves) at a small step and
+  exaggerated the resulting slope 15x. The finer, faster-scrolling
+  octave contributes high-frequency detail a 15x-exaggerated, small-step
+  finite difference is extremely sensitive to, so neighboring mesh
+  vertices (which each sample independently) could land on quite
+  different normals even though the underlying surface itself is
+  smooth — a noisy per-vertex signal rather than a coherent moving
+  shadow. Fixed by basing the shading normal on only the smoother,
+  dominant octave, sampled at a wider step, with less exaggeration.
+  Verified numerically: mean difference between ADJACENT vertices
+  dropped from 0.115 to 0.040 (a real jump would be a smooth gradient
+  across many vertices, not a large swing between neighbors), and
+  frame-to-frame change at a single fixed vertex is only ~0.001 over
+  1/60s — while overall contrast stays comparable (shading from ~0.82x
+  to ~1.46x brightness), so the visible range didn't shrink, only the
+  incoherent flicker did.
+- **Snappier trigger response**: attack shortened 0.06s -> 0.02s per
+  feedback ("decrease the attack").
+- **More translucent overall**: base opacity 0.3 -> 0.18 and peak
+  opacity 0.75 -> 0.45 (kept proportional, so the trigger-glow jump
+  stays clearly visible) per feedback that the fill was too opaque.
+
+## v44 — 2026-07-24 — Scene 6: ground mesh triangles now always filled (3D surface feel at rest)
+
+- **Every triangle in scene 6's ground mesh is now filled at all
+  times**, not just the wireframe edges — an always-present translucent
+  base tint so the mesh reads as a solid, glass-like surface even at
+  rest, before any MIDI has been received, per feedback wanting a better
+  3D feel in the initial state.
+- The MIDI-triggered glow (channel 10 / "pads") now brightens AND
+  saturates a triangle on top of that base fill, rather than fading in
+  from nothing — same smooth attack/release envelope as before, just
+  rebased so it eases between the base tint and a brighter peak glow
+  instead of between invisible and the glow.
+- **First attempt at this shipped with values too subtle to read as any
+  visible change at all** (per direct feedback: "still hollow") — base
+  opacity 0.06 was imperceptible against the background. Corrected with
+  a deliberately bold jump rather than a marginal tweak: base opacity
+  0.06 -> 0.3, peak opacity 0.4 -> 0.75 (raised together so the
+  MIDI-triggered brightening stays clearly distinguishable from the new,
+  much-more-visible resting state), plus brighter/more saturated base
+  color values.
+- Verified numerically: alpha now stays correctly bounded between the
+  base (0.3) and peak (0.75) values across the full envelope range —
+  a 2.5x jump on trigger, clearly perceptible in both states — with
+  saturation/brightness increasing smoothly alongside it; verified
+  syntax and that the shader still compiles.
+
+## v43 — 2026-07-24 — Ground-mesh lighting now glows smoothly; kaleidoscopic fractal moved to scene 2
+
+- **Ground-mesh lighting (scene 6) redesigned around a smooth per-
+  triangle glow envelope** instead of a hard per-tick on/off strobe, per
+  feedback wanting the triangles more translucent with a slower release.
+  Each triangle now tracks (CPU-side) the real time it was last picked;
+  a fragment-shader envelope (quick attack, ~0.06s; slow exponential
+  release, ~0.9s, decaying below visibility by ~4.2s) reads elapsed time
+  since that pick to compute its glow brightness, rather than a binary
+  "is this triangle selected on this exact tick" hash check. Peak
+  opacity also lowered (0.75 -> 0.4) for the requested translucency.
+  Because the glow is purely a function of elapsed time, there's no
+  separate "revert to hollow" step anymore — once channel 10 goes
+  quiet, nothing new gets picked, so every triangle's glow simply decays
+  away on its own, which also means the hollow/lit transition itself is
+  now smooth rather than an abrupt cutoff.
+- Implementation note: this needed real per-triangle timing, which a
+  stateless GPU hash (the previous approach) can't provide — each
+  triplet tick, Python now picks a new random subset of triangle
+  indices, stamps them with the current time in a small numpy array,
+  and rewrites a small dynamic vertex buffer (one float per triangle,
+  repeated per vertex). Only happens on tick boundaries (~100-300ms
+  apart), so the cost is negligible.
+- **Change of heart on where the kaleidoscopic folding fractal
+  belongs**: rather than keep it (or its removal) confined to scene 6,
+  it's been moved to become scene 2's new background, replacing that
+  scene's previous ping-pong feedback/blur buffer with two drifting
+  blobs entirely. Scene 2 keeps its hollow-outline logo overlay
+  (shared with scenes 1 and 3, unchanged) but the accumulation buffers,
+  camera-driven domain warp, and blob motion are all gone. Scene 6
+  itself is unaffected by this — it keeps the ground-mesh lighting
+  above and no fractal.
+- Verified numerically: simulated the new glow envelope across a range
+  of elapsed times, confirming the attack ramps smoothly to peak
+  opacity 0.4 by 0.06s, and decays below the visibility threshold by
+  ~4.2s; also confirmed the "never picked" initial state (a very large
+  elapsed time) evaluates cleanly to 0 with no NaN/Inf risk. Verified
+  both scenes' shaders compile and run by launching the app normally
+  (default scene left unchanged).
+
+## v42 — 2026-07-24 — Scene 6: removed the folding fractal, ground mesh now lights up on MIDI clock
+
+- **Removed the kaleidoscopic folding-fractal bloom from scene 6**
+  (`logo_video_fractal.py`) — channel 10 ("pads") no longer drives it;
+  the background is back to just the braid. All the fractal's shader
+  code, uniforms, and Python-side bloom/phase state were removed
+  outright rather than left dormant.
+- **Channel 10 now drives the ground mesh instead**: any trigger on
+  that channel lights up a random subset of the mesh's triangles
+  (filled, not wireframe), and which subset is lit changes on every
+  MIDI-clock-synced triplet tick — a strobing/twinkling effect timed to
+  the tempo. Reverts to the fully hollow wireframe (no filled triangles
+  at all) once channel 10 has gone quiet for a moment (0.4s).
+- **Implemented with zero per-tick CPU-side buffer rebuilding**: every
+  triangle already carries a random seed baked in at mesh-build time
+  (a new, separate `GL_TRIANGLES` vertex buffer alongside the existing
+  wireframe `GL_LINES` one, sharing the same underlying jittered grid
+  and wobble motion); a fragment-shader hash of that seed combined with
+  a tick counter decides whether THIS triangle happens to be lit on
+  THIS tick. Only the tick counter (a single uniform) changes per tick.
+- Verified numerically: across simulated ticks, the lit fraction tracks
+  the configured target (~16-19% actual vs. 18% target) and the actual
+  set of lit triangles overlaps only ~15-20% between consecutive ticks
+  — confirming a real, visibly-changing random subset each tick rather
+  than a frozen or degenerate pattern.
+
+## v41 — 2026-07-24 — Scene 6: wobbling wireframe ground mesh for depth
+
+- **Added a wobbling wireframe ground mesh to scene 6**
+  (`logo_video_fractal.py`), filling the bottom of the screen — a
+  jittered grid of points (regular grid + per-point random offset, a
+  simple stand-in for a true Voronoi/Delaunay triangulation), split into
+  triangles and rendered hollow (edges only, `GL_LINES`, no filled
+  faces), like a pond or ocean surface viewed at an angle.
+- **Built as genuine 3D geometry with real perspective projection**
+  (reusing the same `_perspective_matrix` helper the logo plane already
+  uses), not a faked 2D taper — vertices are authored directly in
+  view-ready coordinates (a flat plane below eye level, receding into
+  the screen), so it naturally converges to a single vanishing point at
+  screen center as depth increases, exactly the "expanding toward the
+  center" sense of depth asked for.
+- **Wobbles via two octaves of scrolling value-noise in the vertex
+  shader** (GPU-side, so the static vertex buffer never needs
+  re-uploading per frame) for a flowing, liquid undulation rather than a
+  rigid grid.
+- **Guaranteed not to overlap the braid**: verified numerically first
+  that the braid's own strand-wobble + glow falloff can reach as low as
+  y=-0.261 (screen-space) at its most extreme, then set the ground
+  mesh's fade-out (and a hard discard, computed from the actual
+  rendered pixel position via `gl_FragCoord` rather than the mesh's 3D
+  depth) at y=-0.35 — a margin of ~0.09, independent of exactly how the
+  3D projection ends up tuned.
+- **Caught a real bug before it ever shipped**: the first version of the
+  vertex shader computed the wobble displacement but never actually
+  added the below-eye-level `GROUND_Y` offset the perspective math was
+  designed around — meaning the mesh would have sat near screen center
+  instead of filling the bottom of the screen as intended, silently
+  invalidating all the numeric verification done beforehand (which had
+  assumed `GROUND_Y` was applied). Caught by re-reading the shader
+  against its own design comment, not by seeing it render wrong — fixed
+  by adding a `u_ground_y` uniform and actually using it.
+- Verified numerically: the mesh-building function produces the
+  expected vertex count with no NaN/Inf; also verified by launching the
+  app (default scene left unchanged, per earlier feedback) — since
+  `SceneManager` builds every scene's shaders at startup regardless of
+  which is active, this caught any shader compile errors, though the
+  render-time behavior itself (only exercised while a scene is active)
+  still needs a live look with scene 6 selected.
+
+## v40 — 2026-07-24 — Dark contrast outline on the logo (scenes 4 and 6)
+
+- **Added a thin dark rim around the video-plane logo's own silhouette**
+  in both `logo_video_pulse.py` (scene 4) and `logo_video_fractal.py`
+  (scene 6), so the logo stays visually separated from its background
+  even when the background's current color happens to closely match the
+  logo's — previously they could blend into each other with no visible
+  boundary.
+- Implemented in `LOGO_FRAGMENT` itself (not the background), reusing
+  the same ring-sample edge-detection technique `hollow_logo.py` already
+  uses: for each visible logo pixel, sample 8 points in a small ring
+  around it and check whether any disagree with this pixel's own
+  inside/outside classification (the same luminance threshold that
+  already defines the logo's alpha cutout) — if so, it's near the
+  boundary, so blend toward black. Black was chosen deliberately over a
+  hue-matched or light rim, since the braid background is generally
+  bright/glowing and a dark rim reads as contrast against nearly
+  anything, whereas a rim closer to the background's own tonal range
+  risks the same blending problem it's meant to fix.
+- Verified numerically with a synthetic circular test pattern before
+  touching the shader: confirmed the edge only triggers in a thin band
+  right at the true boundary (within the outline-thickness parameter)
+  and stays off both well inside and well outside the shape. Also
+  verified by launching the app (default scene unchanged) and
+  confirming both scenes' shaders still compile and run with no GL
+  errors.
+- Per feedback that the outline was too thick, halved
+  `OUTLINE_THICKNESS` (0.008 -> 0.004) in both scenes.
+
+## v39 — 2026-07-23 — Saved scene 4's fractal background as its own scene, scene 4 back to logo + braid (no fractal)
+
+- **Not convinced the folding-fractal background (v38) is the right
+  look for scene 4** — rather than keep iterating in place, saved the
+  current working version as a new 6th scene, `scenes/logo_video_fractal.py`
+  (registered in `scene_manager.py`/`config.py` as program 5, key `6`),
+  so that work isn't lost while scene 4 goes back to trying new ideas.
+  Both scenes use the same 3D-projected video-plane logo + glitch effect
+  — a hollow white-outline version (like scenes 1-3) was tried briefly
+  in the new scene, but per feedback it worsened the logo/braid color-
+  matching-blend issue (a thin outline has far less opaque area than a
+  filled logo to create contrast against the background), so it was
+  reverted back to the filled 3D plane.
+- **Scene 4 (`logo_video_pulse.py`) reverted to logo + braid, no
+  fractal** — the braid background predates this round's fractal
+  experimentation entirely, so only the fractal/bloom addition was
+  removed; the video plane, glitch, and braid are all unchanged from
+  before any of this round's background work started.
+- **Caught a real bug while first stripping scene 4's background down
+  to nothing** (before realizing the braid needed to stay):
+  `scene_manager.py` never clears its per-scene framebuffers itself —
+  every other scene fills every pixel via its own background shader, so
+  this was never needed before. A scene with no background pass at all
+  would have left stale/ghosted pixels from previous frames showing
+  through wherever the logo plane doesn't cover it (moderngl
+  framebuffers aren't auto-cleared between frames) — moot now that the
+  braid fills every pixel again, but worth remembering for any future
+  scene that ends up with no full-screen background layer.
+- Verified by launching the app on the (unchanged) default scene:
+  `SceneManager` instantiates every registered scene up front regardless
+  of which is active, so this alone exercises both the new scene's and
+  scene 4's shader compilation without needing to switch away from the
+  default scene.
+
+## v38 — 2026-07-23 — Scene 4's background bloom: fractal, then flowers, then a folding fractal (third design this round)
+
+- **Two earlier attempts within this same round were discarded on
+  look**: an escape-time Julia set (even after fixing its rendering
+  bug, the look itself didn't read well), then a garden of procedural
+  rose-curve flowers (also didn't read well). Neither had shipped, so
+  no rollback was needed — just replaced in place.
+- **Landed on a kaleidoscopic folding fractal** — repeated fold
+  (mirror-reflect) + rotate + scale of the plane, the construction
+  behind most "Mandelbox"/kaleidoscope-tunnel shader art, and a
+  genuinely different fractal family from the discarded Julia set (real
+  recursive, self-similar detail, per feedback wanting that back after
+  the flower detour). Its coloring is a sum of a color per fold-depth,
+  weighted by how far that depth has been "revealed" — not an
+  escape-time threshold — so it doesn't share the earlier near-total-
+  black failure mode.
+- **Caught and fixed a real bug during development, before it ever
+  rendered**: the first version of this computed each fold-depth's
+  color from only (depth index, time, bloom) — never actually reading
+  the folded position — which would have made the whole layer a flat,
+  spatially-uniform color wash rather than showing any fractal
+  structure. Fixed by weighting each depth's contribution by proximity
+  to that depth's fold-crease lines (`min(|p.x|, |p.y|)`), which is what
+  actually produces the self-similar line/crease pattern that reads as
+  "fractal." Caught by numerically checking spatial variance across a
+  sampled grid, not just that the numbers were in a safe range — an
+  earlier check on this same feature had wrongly measured variance
+  across R/G/B channels of a single (spatially-uniform) output instead
+  of variance across pixels, and would have passed a shader that looked
+  completely flat.
+- **Always present at a shallow, muted, slowly-turning fold-depth**;
+  while channel 10 ("pads"/DX) has a note held, a "reveal" sweeps
+  through progressively deeper fold levels — real recursive detail
+  phasing in — while rotation speeds up and color saturates/cycles
+  faster, easing back to the shallow resting depth on release (same
+  asymmetric ease-in/out as scene 5's synth2 background layer).
+- Verified numerically: no NaN/Inf despite coordinates growing across
+  8 fold iterations; tuned the crease-glow sharpness so bloomed-state
+  screen coverage sits around 46% (vs. an initial version that covered
+  90%+ and would have looked like a washed-out blob) while resting-state
+  coverage is 0% above the same brightness threshold — a real, visible
+  contrast between the two states. Also verified by temporarily running
+  the app with this scene as the default and confirming the shader
+  compiles and runs with no GL errors.
+- **Found and fixed a real bug per feedback that the pattern kept
+  spinning faster after every trigger, eventually unreasonably fast**:
+  the shader computed rotation/hue angle as `elapsed_time * rate(bloom)`
+  — since `rate` changes with bloom and `elapsed_time` only grows, every
+  bloom transition caused an angle jump proportional to how long the
+  scene had already been running. Verified numerically: a trigger 30
+  minutes into a session spiked to an effective ~675 rad/s versus the
+  intended ~0.15 rad/s max, and it got worse the longer the show ran —
+  exactly the reported symptom. Fixed by accumulating an actual phase
+  incrementally each frame (`phase += dt * rate`, computed in `update()`
+  and passed in as `u_fractal_rot_phase`/`u_fractal_hue_phase`) instead
+  of deriving it from elapsed time in the shader — the same pattern
+  `camera.py` already uses correctly elsewhere in this project. Verified
+  the fix with a simulated 40-minute session of continuous rapid on/off
+  triggering: the per-frame phase step never exceeds its intended bound,
+  regardless of how long the session has run.
+- **Slowed down the rotation/hue-cycling speeds themselves** (max
+  rotation ~0.07 rad/s, down from ~0.15; max hue-cycle rate similarly
+  roughly halved) per feedback to emphasize the blooming/evolving
+  quality over a fast spin.
+- **Increased crease-line sharpness** per feedback (glow falloff
+  steepened, plus an added contrast curve) — bloomed-state screen
+  coverage above the same threshold dropped from ~46% to ~5%, i.e.
+  noticeably thinner, crisper lines rather than a broad soft glow.
+- Per feedback, stopped temporarily switching `config.py`'s
+  `DEFAULT_SCENE` to visually smoke-test this scene — verification for
+  this round is numerical (ported shader math) plus confirming the app
+  still launches normally on the real default scene.
+- **Made the rest state fully silent** per feedback that faint streaks
+  were visible with no MIDI trigger at all: the background was adding
+  `fractal * mix(0.14, 1.0, u_bloom)`, so even at bloom=0 there was a
+  0.14 floor — that floor was exactly the reported streaks. Changed to
+  `fractal * u_bloom` (no floor), so rest contributes exactly `0.0`.
+- **Doubled the release decay time again** (0.6 -> 0.3, ~10s to fade
+  below 5% now vs ~5s) per feedback that it was still fading too fast.
+- **Found and fixed a second real bug this decay lengthening exposed**:
+  per feedback that "faint lines reappear instead of fading to black,"
+  the fractal's per-depth "reveal sweep" (deeper fold levels only
+  contributing once bloom was high enough) meant shallow depths
+  saturated to "fully revealed" at almost any bloom above ~0.125 and
+  then only faded via the single outer bloom multiplier — so during
+  release, the dense multi-depth bloom would collapse quickly down to
+  one lonely shallow crease-line that then lingered, fading extremely
+  slowly, for most of the (now much longer) decay tail. Fixed by
+  dropping the per-depth reveal sweep entirely — every fold depth now
+  fades in lockstep with the same `u_bloom` value. Verified numerically:
+  simulated a full release and confirmed mean on-screen brightness
+  decreases strictly monotonically from bloom=1 down to ~0, with no
+  plateau or brightness increase anywhere in the curve (i.e. no
+  resurging/lingering line).
+
 ## v37 — 2026-07-23 — Fixed what "stop the logo rotation" actually meant, one shared MIDI-activity signal for all scenes
 
 - **Clarified what v36 got wrong**: "the logo's rotation" refers to the

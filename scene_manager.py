@@ -23,6 +23,7 @@ from scenes.feedback_trails import FeedbackTrailsScene
 from scenes.noise_field import NoiseFieldScene
 from scenes.logo_video_pulse import LogoVideoPulseScene
 from scenes.kaleidoscope_video import KaleidoscopeVideoScene
+from scenes.logo_video_fractal import LogoVideoFractalScene
 
 SCENE_CLASSES = {
     "particle_burst": ParticleBurstScene,
@@ -30,6 +31,7 @@ SCENE_CLASSES = {
     "noise_field": NoiseFieldScene,
     "logo_video_pulse": LogoVideoPulseScene,
     "kaleidoscope_video": KaleidoscopeVideoScene,
+    "logo_video_fractal": LogoVideoFractalScene,
 }
 
 BLIT_VERTEX = """
