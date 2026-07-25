@@ -127,8 +127,8 @@ SCENE_PROGRAM_MAP = {
     1: "feedback_trails",
     2: "noise_field",
     3: "logo_video_pulse",
-    4: "kaleidoscope_video",
-    5: "logo_video_fractal",
+    4: "logo_video_fractal",
+    5: "kaleidoscope_video",
 }
 
 # How long a crossfade between scenes takes, in seconds.

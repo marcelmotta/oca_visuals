@@ -135,7 +135,7 @@ uniform sampler2D u_logo;
 uniform float u_glitch_amount;
 uniform float u_glitch_seed;
 
-#define OUTLINE_THICKNESS 0.004
+#define OUTLINE_THICKNESS 0.003
 #define OUTLINE_SAMPLES 8
 
 float hash(vec2 p) {

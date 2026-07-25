@@ -5,15 +5,39 @@ A saved checkpoint of scene 4's background experimentation, kept as its
 own scene while scene 4 itself (logo_video_pulse.py) goes back to a
 simpler state so new ideas can be tried there from a clean slate.
 
-Uses the same 3D-projected spinning video plane (with glitch effect) as
-logo_video_pulse.py, over a glowing braid background. (A hollow
-white-outline version of the logo was tried here briefly — per feedback
-it made the logo/braid color-matching-blend issue worse, since a thin
-outline has far less opaque area than a filled logo to create contrast
-against the background, so it was reverted back to the filled 3D
-plane.) The kaleidoscopic folding-fractal bloom that used to sit on top
-of the braid here has been removed for now, per feedback, in favor of
-the ground-mesh lighting below.
+Uses the same spinning-video-driven logo as logo_video_pulse.py, over a
+glowing braid background — but here the logo has real (modest) depth
+and a translucent refractive glass material (see "Video plane pass"
+below): the original flat quad, unchanged, plus several progressively
+darker, partially-transparent copies of it stacked behind along Z, so
+this scene's existing camera tilt reveals a genuine beveled side/
+thickness rather than a flat opaque image. (A first attempt instead
+displaced a finely subdivided grid's vertices per-pixel-luminance,
+which per feedback came out "distorted, jagged" — vertex displacement
+can't line up with a per-pixel alpha cutout at any practical mesh
+resolution. The stacked-copies approach keeps every slice exactly as
+pixel-precise as the logo always was.) The front-most slice — the
+"face" actually being looked through — goes further: the background
+is captured to an offscreen texture each frame and re-sampled through
+a UV distorted by the letter shapes' own edge gradient (plus
+chromatic aberration and a glossy specular highlight), so the
+background genuinely warps as seen through the glass letters. Both the
+refraction strength and the material's Fresnel-like rim/gloss react to
+the plane's own actual tilt animation (a Schlick-like curve normalized
+to this scene's real tilt range, not a flat linear ramp — see
+FRESNEL_COS_MIN/FRESNEL_F0). (Later attempts tried merging the front
+face and back/side slices into one continuously-shaded material, and
+adding a backlight + selectively disabling refraction on back slices
+to fix a reported "blurry"/aerogel-like look — per feedback, reverted
+back to this version, which was the last one that read as acceptable.)
+It still carries the source footage's own baked-in spin animation and
+the existing glitch effect. (A hollow white-outline version of the
+logo, and later a dark contrast outline, were both tried here too —
+dropped per feedback once this 3D depth took over the job of
+separating the logo from the background.)
+The kaleidoscopic folding-fractal bloom that used to sit on top of the
+braid here has been removed for now, per feedback, in favor of the
+ground-mesh lighting below.
 
 DEPTH: a wobbling wireframe ground mesh (see the "Ground pass" section
 below) fills the bottom of the screen — a jittered/Voronoi-like
@@ -495,7 +519,95 @@ GROUND_FILL_MAX_ALPHA = 0.45  # peak opacity when a triangle is freshly lit — 
 GROUND_FILL_BASE_ALPHA = 0.18  # always-present base fill opacity — lowered (0.3 -> 0.18) alongside
                                  # GROUND_FILL_MAX_ALPHA for an overall more translucent look
 
-# --- Video plane pass: real 3D perspective, with glitch --------------
+# --- Video plane pass: stacked-extrusion 3D, with glitch -----------------
+#
+# First attempt at "make the logo 3D" subdivided the flat quad into an
+# 80x80 grid and displaced each vertex along Z by the video's own
+# per-vertex luminance, with a normal-based emboss shading on top. Per
+# feedback it came out "completely distorted, jagged" — the fundamental
+# problem: vertex displacement can only be as smooth/precise as the mesh
+# resolution, but the alpha cutout that actually defines the visible
+# silhouette is evaluated per-PIXEL in the fragment shader — there is no
+# resolution at which a displaced grid's blocky, linearly-interpolated
+# shape reliably lines up with crisp per-pixel letter edges. That
+# mismatch between "what's opaque" (pixel-precise) and "what's extruded"
+# (grid-resolution-limited) is what read as distortion.
+#
+# This instead uses the classic "stack of cutouts" technique for faking
+# extruded 2D shapes in 3D: keep the ORIGINAL simple flat quad (so the
+# visible silhouette is exactly as pixel-precise as it always was — no
+# geometry resolution involved at all), and draw several progressively
+# darker copies of it stacked behind the front one along Z (see
+# render()'s slice loop). Viewed through this scene's existing camera
+# tilt, that stack reads as a genuine beveled side/thickness — real
+# depth — while every individual slice is still just the same crisp,
+# unmodified per-pixel video sampling as before.
+#
+# Each slice is also given a translucent, "smoked glass" material in
+# LOGO_FRAGMENT: desaturated + cool-tinted color, reduced alpha (so it's
+# see-through rather than solid — stacking several translucent layers
+# is what makes it read as a substantial block of glass rather than a
+# single thin pane), and a Fresnel-like rim brightening/opacity boost
+# (computed once per frame in render() from the plane's own rotated
+# normal, since it's still a flat surface) that grows as the plane
+# tilts away from facing the camera dead-on — the classic cue that
+# sells a glass/translucent material.
+#
+# That alone (tint + reduced alpha) read as a faded image, not glass,
+# per feedback — real glass REFRACTS what's behind it, it doesn't just
+# fade it. So the front-most slice (the "face" the viewer actually
+# looks through) uses a different technique (LOGO_FRAGMENT_GLASS): the
+# bg braid + ground mesh are first rendered into an offscreen texture
+# (see bg_capture_fbo) instead of straight to the screen, then that
+# texture is blitted to the real target, and finally the glass face
+# samples the SAME background texture again with a distorted UV —
+# offset by the local gradient of the letter shape's own alpha mask
+# (strongest right at a curved edge, near-zero in flat interior/
+# exterior regions, exactly like a real embossed glass letter bends
+# light most at its boundary), plus chromatic aberration (sampling each
+# color channel at a slightly different offset — the classic "looking
+# through thick glass" cue, visible even where the background itself
+# is fairly smooth/low-detail) — and mixes that warped sample with the
+# character's own tinted color. This is what actually shows the
+# background warped through the glass rather than just dimmed under
+# it. The back/side slices keep the simpler tint-only material (plus
+# their own bump-mapped specular) — they read as depth/shading on the
+# extrusion's sides, not the "looking through" face.
+#
+# Both the refraction strength and the Fresnel-like rim/gloss react to
+# the plane's own actual tilt animation each frame (see render() and
+# FRESNEL_COS_MIN/FRESNEL_F0 below) via a Schlick-like curve — low near
+# dead-on, rising toward however edge-on this scene's yaw/pitch/roll
+# animation ever actually gets (verified numerically that raw view-
+# angle cosine barely moves across the plane's real tilt range, so it's
+# remapped against that real range instead of the textbook 0..1 one).
+
+# A plain copy shader: draws bg_capture_fbo's texture onto `target`
+# unmodified (opaque, ignoring its own alpha) before the logo is drawn
+# on top — this is what makes "the background so far" available as a
+# sampleable texture for the glass face's refraction below, something
+# rendering straight to `target` (as every other pass in this project
+# does) can't offer.
+BLIT_VERTEX = """
+#version 330
+in vec2 in_position;
+in vec2 in_uv;
+out vec2 v_uv;
+void main() {
+    v_uv = in_uv;
+    gl_Position = vec4(in_position, 0.0, 1.0);
+}
+"""
+
+BLIT_FRAGMENT = """
+#version 330
+in vec2 v_uv;
+out vec4 f_color;
+uniform sampler2D u_tex;
+void main() {
+    f_color = vec4(texture(u_tex, v_uv).rgb, 1.0);
+}
+"""
 
 LOGO_VERTEX = """
 #version 330
@@ -503,9 +615,11 @@ in vec3 in_position;
 in vec2 in_uv;
 out vec2 v_uv;
 uniform mat4 u_mvp;
+uniform float u_z_offset;
 void main() {
     v_uv = in_uv;
-    gl_Position = u_mvp * vec4(in_position, 1.0);
+    vec3 pos = in_position + vec3(0.0, 0.0, u_z_offset);
+    gl_Position = u_mvp * vec4(pos, 1.0);
 }
 """
 
@@ -516,17 +630,17 @@ out vec4 f_color;
 uniform sampler2D u_logo;
 uniform float u_glitch_amount;
 uniform float u_glitch_seed;
-
-#define OUTLINE_THICKNESS 0.004
-#define OUTLINE_SAMPLES 8
+uniform float u_darken;
+uniform float u_glass_alpha;
+uniform float u_fresnel;
+uniform vec3 u_view_dir;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 
-float sample_lum(vec2 uv_) {
-    vec3 c = texture(u_logo, vec2(uv_.x, 1.0 - uv_.y)).rgb;
-    return dot(c, vec3(0.299, 0.587, 0.114));
+vec3 sample_video(vec2 uv) {
+    return texture(u_logo, vec2(uv.x, 1.0 - uv.y)).rgb;
 }
 
 void main() {
@@ -545,31 +659,270 @@ void main() {
         float b = texture(u_logo, vec2(uv.x - split, 1.0 - uv.y)).b;
         tex_rgb = vec3(r, g, b);
     } else {
-        tex_rgb = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).rgb;
+        tex_rgb = sample_video(uv);
     }
 
     float lum = dot(tex_rgb, vec3(0.299, 0.587, 0.114));
-    float alpha = smoothstep(0.35, 0.55, lum);
+    // Anti-aliased cutout: fwidth(lum) sizes the smoothstep band to ~1
+    // screen pixel regardless of the logo's on-screen size, instead of
+    // a fixed luminance-space band (which reads as jagged small and
+    // oddly soft large).
+    float edge_soft = fwidth(lum) * 1.5 + 0.01;
+    float mask = smoothstep(0.45 - edge_soft, 0.45 + edge_soft, lum);
+    // Scaled by u_glass_alpha (< 1.0) rather than left fully opaque —
+    // this is what makes each slice translucent rather than solid.
+    // Stacking many translucent slices naturally builds up toward a
+    // more substantial (but still see-through at the edges) look, the
+    // way a thick block of glass reads differently than a thin pane.
+    float alpha = mask * u_glass_alpha;
     if (alpha <= 0.01) discard;
 
-    // Dark rim around the logo's own silhouette so it stays visually
-    // separated from the background regardless of whether the
-    // background's current color happens to closely match the logo's.
-    // Same ring-sample edge-detection technique as hollow_logo.py: if
-    // any nearby sample disagrees with this pixel's inside/outside
-    // classification, this pixel is near the boundary.
-    float center_inside = step(0.45, lum);
-    float edge = 0.0;
-    for (int i = 0; i < OUTLINE_SAMPLES; i++) {
-        float a = 6.2831853 * float(i) / float(OUTLINE_SAMPLES);
-        vec2 offset = vec2(cos(a), sin(a)) * OUTLINE_THICKNESS;
-        if (step(0.45, sample_lum(uv + offset)) != center_inside) edge = 1.0;
-    }
-    tex_rgb = mix(tex_rgb, vec3(0.0), edge * 0.85);
+    // "Smoked glass" material: desaturate the video's own color toward
+    // gray, then multiply by a cool, slightly dim tint — this is what
+    // makes it read as something being VIEWED THROUGH tinted glass
+    // rather than a solid, fully-saturated printed material.
+    vec3 gray = vec3(lum);
+    tex_rgb = mix(tex_rgb, gray, 0.45);
+    tex_rgb *= vec3(0.72, 0.8, 0.86);
+
+    // Per-slice depth darkening.
+    tex_rgb *= u_darken;
+
+    // Glossy sheen: a fake normal built from the local alpha-mask
+    // gradient, lit with a fixed key light and this slice's actual
+    // view direction (so the highlight moves correctly as the plane
+    // tilts through its existing animation, like real light catching a
+    // curved glass edge). Scaled by u_fresnel (a Schlick-like curve
+    // over the plane's OWN actual tilt range, low near dead-on, rising
+    // toward however edge-on this scene's animation ever gets) — real
+    // specular reflectance grows with view angle too, so the sheen
+    // should visibly strengthen as the plane tilts, not stay constant.
+    float eps = 0.008;
+    float lum_x = dot(sample_video(uv + vec2(eps, 0.0)), vec3(0.299, 0.587, 0.114));
+    float lum_y = dot(sample_video(uv + vec2(0.0, eps)), vec3(0.299, 0.587, 0.114));
+    float mask_x = smoothstep(0.45 - edge_soft, 0.45 + edge_soft, lum_x);
+    float mask_y = smoothstep(0.45 - edge_soft, 0.45 + edge_soft, lum_y);
+    vec2 edge_grad = vec2(mask_x - mask, mask_y - mask);
+
+    vec3 bump_normal = normalize(vec3(-edge_grad * 3.0, 1.0));
+    vec3 light_dir = normalize(vec3(0.5, 0.6, 0.7));
+    vec3 half_vec = normalize(light_dir + normalize(u_view_dir));
+    float spec = pow(clamp(dot(bump_normal, half_vec), 0.0, 1.0), 10.0);
+    tex_rgb += spec * mix(0.3, 1.0, u_fresnel) * 0.8;
+
+    // Fresnel-like rim sheen: brighter, slightly more opaque at grazing
+    // angles as the plane tilts, the classic glass/translucent-material
+    // cue. u_fresnel is uniform across the whole plane (computed once
+    // in render() from the plane's own rotated normal) rather than
+    // per-pixel, since this is still a flat plane.
+    tex_rgb += u_fresnel * 0.3;
+    alpha = clamp(alpha + u_fresnel * 0.15, 0.0, 1.0);
 
     f_color = vec4(tex_rgb, alpha);
 }
 """
+
+# The front-most slice only: instead of a flat tint, this samples the
+# already-rendered background (bg_capture_fbo, see render()) a second
+# time through a distorted UV, so what's behind the logo visibly warps
+# through it rather than just dimming — see the "Video plane pass"
+# module comment above for the reasoning.
+LOGO_FRAGMENT_GLASS = """
+#version 330
+in vec2 v_uv;
+out vec4 f_color;
+uniform sampler2D u_logo;
+uniform sampler2D u_background;
+uniform vec2 u_viewport_size;
+uniform float u_glitch_amount;
+uniform float u_glitch_seed;
+uniform float u_glass_alpha;
+uniform float u_fresnel;
+uniform float u_density;
+uniform vec3 u_view_dir;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+vec3 sample_video(vec2 uv) {
+    return texture(u_logo, vec2(uv.x, 1.0 - uv.y)).rgb;
+}
+
+void main() {
+    vec2 uv = v_uv;
+
+    vec3 tex_rgb;
+    if (u_glitch_amount > 0.0) {
+        float band = floor(v_uv.y * 14.0);
+        float band_rand = hash(vec2(band, u_glitch_seed));
+        float tear = step(0.55, band_rand) * (band_rand - 0.5) * 2.0;
+        uv.x += tear * 0.12 * u_glitch_amount;
+
+        float split = 0.012 * u_glitch_amount;
+        float r = texture(u_logo, vec2(uv.x + split, 1.0 - uv.y)).r;
+        float g = texture(u_logo, vec2(uv.x, 1.0 - uv.y)).g;
+        float b = texture(u_logo, vec2(uv.x - split, 1.0 - uv.y)).b;
+        tex_rgb = vec3(r, g, b);
+    } else {
+        tex_rgb = sample_video(uv);
+    }
+
+    float lum = dot(tex_rgb, vec3(0.299, 0.587, 0.114));
+    // Anti-aliased cutout (see LOGO_FRAGMENT for the full reasoning):
+    // fwidth(lum) sizes the smoothstep band to ~1 screen pixel instead
+    // of a fixed luminance-space band, fixing edges that read as jagged
+    // or fake-looking regardless of the logo's on-screen size.
+    float edge_soft = fwidth(lum) * 1.5 + 0.01;
+    float mask = smoothstep(0.45 - edge_soft, 0.45 + edge_soft, lum);
+    float alpha = mask * u_glass_alpha;
+    if (alpha <= 0.01) discard;
+
+    // Refraction offset: the LOCAL slope of the letter shape's own
+    // alpha mask (finite-difference of the exact same mask used for
+    // the cutout above, purely per-pixel — no mesh resolution involved
+    // at all, unlike the earlier rejected vertex-displacement attempt)
+    // — strongest right at a curved edge, near-zero in flat interior/
+    // exterior regions, like a real embossed glass letter bends light
+    // most at its boundary and passes it through almost undistorted
+    // through the middle.
+    //
+    // Scaled by u_density, which render() sets dynamically each frame
+    // from BOTH the extrusion's depth (thicker glass bends more) AND
+    // the current Fresnel/view angle (steeper viewing angle = more
+    // effective glass thickness the light crosses, so more bend) —
+    // this is what makes the refraction actually react to perspective
+    // instead of staying constant regardless of tilt.
+    float eps = 0.008;
+    float lum_x = dot(sample_video(uv + vec2(eps, 0.0)), vec3(0.299, 0.587, 0.114));
+    float lum_y = dot(sample_video(uv + vec2(0.0, eps)), vec3(0.299, 0.587, 0.114));
+    float mask_x = smoothstep(0.45 - edge_soft, 0.45 + edge_soft, lum_x);
+    float mask_y = smoothstep(0.45 - edge_soft, 0.45 + edge_soft, lum_y);
+    vec2 edge_grad = vec2(mask_x - mask, mask_y - mask);
+
+    vec2 refract_offset = edge_grad * 0.09 * u_density;
+
+    // Chromatic aberration: sample the background through each color
+    // channel at a slightly different offset scale, concentrated at the
+    // same letter edges the refraction itself is (since it's built from
+    // the same edge_grad) — this is the single most recognizable
+    // "looking through thick glass/a lens" cue, and reads clearly even
+    // where the background is fairly smooth/low-detail (a plain warp is
+    // only visible where the background already has sharp features to
+    // distort; a color-fringed edge is visible regardless).
+    vec2 screen_uv = gl_FragCoord.xy / u_viewport_size;
+    vec2 uv_r = clamp(screen_uv + refract_offset * 0.85, 0.0, 1.0);
+    vec2 uv_g = clamp(screen_uv + refract_offset * 1.0, 0.0, 1.0);
+    vec2 uv_b = clamp(screen_uv + refract_offset * 1.15, 0.0, 1.0);
+    vec3 bg_sample = vec3(
+        texture(u_background, uv_r).r,
+        texture(u_background, uv_g).g,
+        texture(u_background, uv_b).b
+    );
+
+    // Mostly the warped background (the actual "see through" part),
+    // with enough of the character's own tinted color mixed in that it
+    // still reads as itself rather than just a distorted patch of
+    // whatever's behind it. Lighter tint/less desaturation than the
+    // back/side slices (LOGO_FRAGMENT) — this is the primary "face"
+    // being looked through and needs to read as clear, glossy glass,
+    // not the smoked/shadowed material appropriate for the extrusion's
+    // hidden sides.
+    vec3 gray = vec3(lum);
+    vec3 tinted_video = mix(tex_rgb, gray, 0.2) * vec3(0.88, 0.94, 1.0);
+    vec3 tinted_bg = bg_sample * vec3(0.92, 0.96, 1.02);
+    vec3 color = mix(tinted_bg, tinted_video, 0.3);
+
+    // Glossy sheen: a fake surface normal "bumped" from the same
+    // letter-edge gradient used for refraction above (so the highlight
+    // sits right on the character's own curves/corners, not somewhere
+    // arbitrary), lit with a fixed key light and this slice's actual
+    // view direction (computed CPU-side from the plane's own rotation —
+    // see render() — so the highlight correctly slides across the
+    // surface as the plane tilts through its existing animation,
+    // instead of looking painted-on). Intensity scaled by u_fresnel —
+    // real specular reflectance grows with view angle, so the sheen
+    // should visibly strengthen as the plane tilts toward edge-on
+    // rather than staying fixed regardless of perspective.
+    vec3 bump_normal = normalize(vec3(-edge_grad * 4.0, 1.0));
+    vec3 light_dir = normalize(vec3(0.5, 0.6, 0.7));
+    vec3 half_vec = normalize(light_dir + normalize(u_view_dir));
+    float spec = pow(clamp(dot(bump_normal, half_vec), 0.0, 1.0), 9.0);
+    color += spec * mix(0.4, 1.0, u_fresnel) * 1.1;
+
+    // Fresnel rim: brighter and more opaque toward the plane's own most
+    // edge-on pose (see render() — a Schlick-like curve over this
+    // scene's ACTUAL tilt range, not raw view-angle cosine, since the
+    // animation never reaches a true grazing angle and a textbook
+    // Schlick curve would barely move at all across it).
+    color += u_fresnel * 0.35;
+    alpha = clamp(alpha + u_fresnel * 0.15, 0.0, 1.0);
+
+    f_color = vec4(color, alpha);
+}
+"""
+
+LOGO_EXTRUDE_SLICES = 14     # how many stacked copies form the extrusion's "side"
+LOGO_EXTRUDE_DEPTH = 0.05    # in the same local units as half_h (1.0) — total thickness (halved per feedback)
+LOGO_EXTRUDE_MIN_DARKEN = 0.35  # brightness of the farthest-back slice (front slice is always 1.0x)
+
+# Schlick-like Fresnel curve for the glass material (see render()):
+# FRESNEL_COS_MIN is how edge-on the plane's own yaw/pitch/roll
+# animation ever actually gets (verified numerically by sampling
+# abs(normal.z) across the full animation: it never drops below ~0.644,
+# i.e. this scene never reaches a true grazing angle), used to remap
+# the real tilt range to a full 0..1 curve input. FRESNEL_F0 is the
+# reflectivity at dead-on incidence (real glass is ~0.04; kept slightly
+# higher here so there's always a bit of visible sheen/rim even facing
+# the camera straight on).
+FRESNEL_COS_MIN = 0.64
+FRESNEL_F0 = 0.05
+
+# Base strength of the glass face's refraction offset (LOGO_FRAGMENT_
+# GLASS) — derived from LOGO_EXTRUDE_DEPTH rather than an arbitrary
+# constant, so a "denser"/thicker glass block genuinely warps more, the
+# way real refraction displaces a ray further the deeper the medium it
+# passes through is. 1.0 at zero depth, +20x depth beyond that — 2.0 at
+# the current LOGO_EXTRUDE_DEPTH (0.05). render() multiplies this
+# further by (1 + fresnel*1.2) each frame — see FRESNEL_COS_MIN/
+# FRESNEL_F0 above — so steeper viewing angles bend the background more
+# too. Verified numerically together (base density 2.0, worst-case
+# dynamic density 4.4 at the plane's own most edge-on real pose): the
+# combined worst-case offset (both mask-gradient axes maxed at once,
+# plus the chromatic-aberration channel split) reaches ~0.64 screen-uv
+# units — large, but only at that rare edge+extreme-tilt combination,
+# always clamped in-shader, and NaN/Inf-free; the typical case near
+# dead-on stays a modest ~0.045.
+LOGO_REFRACT_DENSITY = 1.0 + LOGO_EXTRUDE_DEPTH * 20.0
+
+# Per feedback that an earlier version's front glass face was drowned
+# out by the back/side slices (splitting one shared, equally-weighted
+# alpha across all LOGO_EXTRUDE_SLICES+1 layers gave the front face
+# only ~5-10% of the final pixel's visual weight — the compounded back
+# stack and the plain background underneath it dominated instead, which
+# is why it still read as "matte"/"smoked" with no visible gloss or
+# warping despite those effects being implemented) — the front face and
+# the back/side slices use two SEPARATE alpha values instead of one
+# shared LOGO_GLASS_ALPHA:
+#
+# - LOGO_FRONT_ALPHA: a direct, fairly high opacity for the front
+#   face — it's the primary material surface the viewer actually looks
+#   at/through, so it should dominate the final pixel, not compete
+#   equally with 14 other layers.
+# - LOGO_BACK_SLICE_ALPHA: solved (compounding-alpha math — 1-(1-a)^n)
+#   so the 14 back/side slices ALONE converge to a modest cumulative
+#   opacity — just enough to read as a beveled depth/shadow cue at the
+#   extrusion's edges when tilted, not a competing "second material."
+#
+# Verified numerically: with LOGO_FRONT_ALPHA=0.7 and back slices
+# compounding to 0.3, the front face carries ~70% of the final pixel's
+# color, the back stack ~9%, and the plain (undistorted) background
+# still peeking through underneath both ~21% — that last bit is what
+# keeps the whole thing reading as translucent rather than a solid
+# opaque card, even at the front face's own fairly high alpha.
+LOGO_FRONT_ALPHA = 0.7
+LOGO_BACK_TARGET_OPACITY = 0.3
+LOGO_BACK_SLICE_ALPHA = 1.0 - (1.0 - LOGO_BACK_TARGET_OPACITY) ** (1.0 / LOGO_EXTRUDE_SLICES)
 
 
 def _perspective_matrix(fovy, aspect, near, far):
@@ -656,6 +1009,16 @@ class LogoVideoFractalScene(Scene):
 
         self.video = VideoTexture(ctx, VIDEO_PATH, max_dim=MAX_TEXTURE_DIM)
 
+        # Offscreen capture of the bg braid + ground mesh, at the real
+        # output resolution (not downscaled like particle_burst.py's
+        # work buffers — this is sampled directly by the glass face
+        # below, so it needs to stay sharp) — see the "Video plane
+        # pass" module comment and resize() for why this exists.
+        self.bg_capture_size = (self.output_width, self.output_height)
+        self.bg_capture_fbo = self._make_capture_fbo(ctx, self.bg_capture_size)
+        self.blit_program = ctx.program(vertex_shader=BLIT_VERTEX, fragment_shader=BLIT_FRAGMENT)
+        self.blit_vao = make_fullscreen_quad_vao(ctx, self.blit_program)
+
         self.logo_program = ctx.program(vertex_shader=LOGO_VERTEX, fragment_shader=LOGO_FRAGMENT)
         half_h = 1.0
         half_w = half_h * self.video.aspect
@@ -672,6 +1035,15 @@ class LogoVideoFractalScene(Scene):
             self.logo_program, [(logo_vbo, "3f 2f", "in_position", "in_uv")]
         )
 
+        # Front face only: same geometry, different program/material
+        # (see LOGO_FRAGMENT_GLASS) — reuses the same quad VBO since the
+        # shape is identical, just bound to a different program's
+        # attribute locations.
+        self.logo_glass_program = ctx.program(vertex_shader=LOGO_VERTEX, fragment_shader=LOGO_FRAGMENT_GLASS)
+        self.logo_glass_vao = ctx.vertex_array(
+            self.logo_glass_program, [(logo_vbo, "3f 2f", "in_position", "in_uv")]
+        )
+
         self.fov = math.radians(50)
         self.distance = half_h / math.tan(self.fov / 2.0)
 
@@ -683,6 +1055,18 @@ class LogoVideoFractalScene(Scene):
         self.next_glitch_time = np.random.uniform(10.0, 25.0)
         self.glitch_active_until = 0.0
         self.glitch_seed = 0.0
+
+    def _make_capture_fbo(self, ctx, size):
+        tex = ctx.texture(size, 4)
+        tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+        return ctx.framebuffer(color_attachments=[tex])
+
+    def resize(self, width, height):
+        super().resize(width, height)
+        new_size = (width, height)
+        if new_size != self.bg_capture_size:
+            self.bg_capture_size = new_size
+            self.bg_capture_fbo = self._make_capture_fbo(self.ctx, new_size)
 
     def update(self, dt, midi, camera):
         self.time += dt
@@ -721,8 +1105,16 @@ class LogoVideoFractalScene(Scene):
 
     def render(self, target):
         ctx = self.ctx
-        target.use()
         cam = self.camera
+
+        # --- Background capture pass: bg braid + ground mesh render into
+        # an offscreen texture first, instead of straight to `target` —
+        # this is what lets every logo slice sample "what's actually
+        # behind it" for a refraction effect below (see LOGO_FRAGMENT).
+        # The bg pass below is a fullscreen quad that always writes
+        # alpha=1.0 across the whole capture texture, so no separate
+        # clear is needed here.
+        self.bg_capture_fbo.use()
 
         self.bg_program["u_time"] = self.time
         self.bg_program["u_hue"] = self.hue
@@ -772,6 +1164,15 @@ class LogoVideoFractalScene(Scene):
 
         ctx.disable(moderngl.BLEND)
 
+        # Composite the captured background onto the real target, then
+        # draw the logo on top of THAT (in the actual output
+        # framebuffer) — everything below matches how this scene always
+        # rendered, just with an extra copy step in between.
+        target.use()
+        self.bg_capture_fbo.color_attachments[0].use(location=0)
+        self.blit_program["u_tex"] = 0
+        self.blit_vao.render(moderngl.TRIANGLES)
+
         cam_time = cam.time if cam else self.time
         cam_punch = cam.punch if cam else 0.0
         yaw = 0.75 * math.sin(cam_time * 0.15) + cam_punch * 0.12
@@ -785,16 +1186,90 @@ class LogoVideoFractalScene(Scene):
         mvp = proj @ view @ model
         mvp_col_major = mvp.T.astype("f4").copy()
 
+        # Fresnel-like rim term for the glass material (see
+        # LOGO_FRAGMENT): the plane's own local
+        # normal (0,0,1), rotated by the SAME model matrix as the
+        # geometry, tells us how edge-on the plane currently is to the
+        # camera. A Schlick-like curve (low near dead-on, rising toward
+        # edge-on) is more realistic than a flat linear ramp — but
+        # normalized against this SCENE's own actual tilt range rather
+        # than the textbook 0..1 cosine range: verified numerically that
+        # this scene's yaw/pitch/roll animation never tilts the plane
+        # more edge-on than abs(normal.z) ~= 0.64, so a raw Schlick
+        # curve (which only really moves in the last ~10% near true
+        # grazing) would barely react at all across the plane's actual
+        # motion. Remapping that real range to a full 0..1 "how edge-on,
+        # relative to how edge-on this scene ever gets" first is what
+        # makes the material visibly react to perspective during normal
+        # playback instead of only at an unreachable extreme.
+        normal_world = model @ np.array([0.0, 0.0, 1.0, 0.0], dtype="f4")
+        cos_theta = abs(float(normal_world[2]))
+        t_edge = float(np.clip((1.0 - cos_theta) / (1.0 - FRESNEL_COS_MIN), 0.0, 1.0))
+        fresnel = FRESNEL_F0 + (1.0 - FRESNEL_F0) * (t_edge ** 3)
+
+        # Refraction density scales UP with the same Fresnel/view-angle
+        # term — a steeper viewing angle means light crosses more
+        # effective glass thickness (the classic reason a windshield
+        # looks far more warped at a grazing glance than straight on),
+        # so the background should bend more as the plane tilts, not a
+        # constant amount regardless of perspective.
+        density = LOGO_REFRACT_DENSITY * (1.0 + fresnel * 1.2)
+
+        # View direction in the plane's own LOCAL frame, for the glossy
+        # specular highlight (LOGO_FRAGMENT): un-
+        # rotate the world "toward camera" direction (0,0,1), the same
+        # reference axis normal_world above is measured against, by the
+        # inverse of `model` — which for a pure rotation matrix is just
+        # its transpose — so the highlight is computed in the same local
+        # (u, v, out-of-plane) space the fragment shader's bump normal
+        # already lives in, and correctly slides across the surface as
+        # the plane tilts through its existing animation.
+        view_dir_local = (model.T @ np.array([0.0, 0.0, 1.0, 0.0], dtype="f4"))[:3]
+
         self.video.texture.use(location=0)
         self.logo_program["u_logo"] = 0
         self.logo_program["u_mvp"].write(mvp_col_major.tobytes())
+        self.logo_program["u_glass_alpha"] = LOGO_BACK_SLICE_ALPHA
+        self.logo_program["u_fresnel"] = fresnel
+        self.logo_program["u_view_dir"] = tuple(view_dir_local.tolist())
         glitch_active = self.time < self.glitch_active_until
         self.logo_program["u_glitch_amount"] = 1.0 if glitch_active else 0.0
         self.logo_program["u_glitch_seed"] = self.glitch_seed
 
         ctx.enable(moderngl.BLEND)
         ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-        self.logo_vao.render(moderngl.TRIANGLES)
+        # Stacked-extrusion "3D": draw farthest-back (most negative Z,
+        # darkest) first, so simple back-to-front painter's-algorithm
+        # overlap looks correct with no depth buffer involved. Every
+        # slice is the exact same crisp flat quad + per-pixel video
+        # sampling as before — see the "Video plane pass" comment above
+        # for why that matters. The very front slice (i=0, Z=0) is
+        # handled separately below with the background-refraction glass
+        # material instead of this simpler per-slice tint, since it's
+        # the "face" the viewer actually looks through.
+        for i in range(LOGO_EXTRUDE_SLICES, 0, -1):
+            t = i / LOGO_EXTRUDE_SLICES  # 1.0 (farthest back) .. near 0.0
+            self.logo_program["u_z_offset"] = -LOGO_EXTRUDE_DEPTH * t
+            self.logo_program["u_darken"] = LOGO_EXTRUDE_MIN_DARKEN + (1.0 - LOGO_EXTRUDE_MIN_DARKEN) * (1.0 - t)
+            self.logo_vao.render(moderngl.TRIANGLES)
+
+        # Front face: unit 0 stays the video texture (bound above), unit
+        # 1 is the captured background so LOGO_FRAGMENT_GLASS can sample
+        # it a second time with a refracted UV.
+        self.bg_capture_fbo.color_attachments[0].use(location=1)
+        self.logo_glass_program["u_logo"] = 0
+        self.logo_glass_program["u_background"] = 1
+        self.logo_glass_program["u_mvp"].write(mvp_col_major.tobytes())
+        self.logo_glass_program["u_z_offset"] = 0.0
+        self.logo_glass_program["u_viewport_size"] = (float(target.size[0]), float(target.size[1]))
+        self.logo_glass_program["u_glass_alpha"] = LOGO_FRONT_ALPHA
+        self.logo_glass_program["u_fresnel"] = fresnel
+        self.logo_glass_program["u_density"] = density
+        self.logo_glass_program["u_view_dir"] = tuple(view_dir_local.tolist())
+        self.logo_glass_program["u_glitch_amount"] = 1.0 if glitch_active else 0.0
+        self.logo_glass_program["u_glitch_seed"] = self.glitch_seed
+        self.logo_glass_vao.render(moderngl.TRIANGLES)
+
         ctx.disable(moderngl.BLEND)
 
     def teardown(self):

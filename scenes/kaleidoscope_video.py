@@ -1,7 +1,7 @@
 """
 kaleidoscope_video.py
 ----------------------
-Scene 5: the spin-loop video (assets/oca_spin_loop_v3.mp4) fed through a
+Scene 6: the spin-loop video (assets/oca_spin_loop_v3.mp4) fed through a
 mirrored radial kaleidoscope, dressed with several Japanese-inspired
 visual elements:
 

@@ -5,7 +5,7 @@ A centered, white OUTLINE-ONLY rendering of the spin-loop video logo —
 just the edges of the shapes, not filled — meant as a light overlay on
 top of scenes that are already busy with their own content (particles,
 feedback trails, noise), rather than the full solid/3D treatment used
-in scenes 4 and 5.
+in scenes 4, 5, and 6.
 
 TECHNIQUE: at each pixel, sample a binary inside/outside mask (video
 luminance thresholded) at the pixel itself and at a ring of points

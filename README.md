@@ -67,9 +67,9 @@ python3 main.py
     holding there until MIDI activity returns, at which point it
     resumes from the start. This is independent of any other animation
     layered on top of the footage — e.g. scene 4's 3D plane tilt/bounce
-    and scene 5's own kaleidoscope rotation keep running at all times
+    and scene 6's own kaleidoscope rotation keep running at all times
     regardless of MIDI.
-  - Scene 5's sequential character-pop chase similarly only advances
+  - Scene 6's sequential character-pop chase similarly only advances
     while MIDI is recently active, not just whenever MIDI Clock happens
     to be ticking (see `kaleidoscope_video.py`).
 - Once MIDI is connected: notes in the C1–D#2 range (36–51) trigger
@@ -88,7 +88,7 @@ routing from Ableton instead, or to remap):
 | 1–3 | Kick, Snare, Snare2/Clap | `drums` | Big particle bursts / bright pulses (scenes 1-3); logo/video scenes' shared camera "punch" and background pixel-cloud |
 | 4–7 | Hi-hat 1/2, Perc 1/2 | `percussion` | Gentle per-character particle burst in the logo/video scenes (scenes 4-5 only) |
 | 8 | Bass/Synth 1 | `bass` | Continuous motion speed, swirl, trail length (via CC) |
-| 9–10 | Synth 2, Pads/DX | `keys` | Color / hue, plus soft color-ring bursts. Channel 10 individually (`pads` role) also: blooms scene 2's background kaleidoscopic fractal for as long as a note is held, and glows random triangles of scene 6's ground mesh (smooth attack/release, synced to MIDI clock) on each trigger |
+| 9–10 | Synth 2, Pads/DX | `keys` | Color / hue, plus soft color-ring bursts. Channel 10 individually (`pads` role) also: blooms scene 2's background kaleidoscopic fractal for as long as a note is held, and glows random triangles of scene 5's ground mesh (smooth attack/release, synced to MIDI clock) on each trigger |
 | 11 | Sampler | `texture` | Slow ambient twinkles / ripples |
 
 In Ableton, set each MIDI track's output channel under that track's
@@ -111,11 +111,11 @@ mapping and are now deliberately kept separate) — adjust
 | `hollow_logo.py` | Centered white outline-only logo overlay, used by scenes 1-3 |
 | `particle_field.py` | Reusable point-cloud burst effect, embeddable in any scene (used by `kaleidoscope_video.py`) |
 | `scenes/particle_burst.py` | House-of-Cards-style point cloud: high density, per-instrument-channel color, erratic fade-out, camera parallax |
-| `scenes/feedback_trails.py` | Hollow-outline logo (same as scenes 1 and 3) over a kaleidoscopic folding fractal background (moved here from scene 6). Invisible at rest, blooms (brighter, more saturated, faster rotation/color-cycling) while channel 10 ("pads") has a note held, fading back out on release |
+| `scenes/feedback_trails.py` | Hollow-outline logo (same as scenes 1 and 3) over a kaleidoscopic folding fractal background (moved here from logo_video_fractal.py). Invisible at rest, blooms (brighter, more saturated, faster rotation/color-cycling) while channel 10 ("pads") has a note held, fading back out on release |
 | `scenes/noise_field.py` | Breathing organic noise field: layered bg/fg noise planes, long ripple sustain, camera parallax |
 | `scenes/logo_video_pulse.py` | The spin-loop video as a real 3D-projected plane with a subtle glitch effect and a dark contrast outline (so it stays visible against the background even when their colors closely match), over a glowing braid background. The folding-fractal bloom tried on top of the braid this round was pulled back out — see `scenes/logo_video_fractal.py` |
+| `scenes/logo_video_fractal.py` | A saved checkpoint of scene 4's background experimentation, but with the logo given real (modest) depth and a translucent refractive glass material: the original pixel-precise flat quad, unchanged, plus several progressively darker, partially-transparent copies stacked behind it along Z (plus a Fresnel-like rim sheen) for a genuine beveled thickness, and the front-most "face" slice re-samples an offscreen capture of the background through a UV distorted by the letter shapes' own edge gradient plus chromatic aberration and a glossy specular highlight — both the refraction and the rim/gloss reacting to the plane's own actual tilt animation via a Schlick-like Fresnel curve — so the background actually warps as seen through the glass rather than just fading under it (no outline needed, and no mesh-resolution/jaggedness tradeoffs since every slice is still the same crisp per-pixel video sampling) + glitch, over a glowing braid, plus a wobbling wireframe ground mesh (jittered/Voronoi-like triangulated grid, real 3D perspective, converging toward the horizon like a pond/ocean surface) filling the bottom of the screen. Every triangle is always filled with a translucent base tint, individually shaded from a real surface normal derived from the wobble height field (actual topography — shadows/highlights — instead of one flat color); channel 10 ("pads") triggers make random triangles glow brighter/more saturated on top of that (quick attack, slow release), synced to MIDI clock, easing back to the base fill when quiet |
 | `scenes/kaleidoscope_video.py` | The spin-loop video through a mirrored kaleidoscope, with seigaiha waves, asanoha lattice, drifting sakura petals, a gold mandala ring, and "温泉" characters that pop in sequence around the boundary, timed to MIDI Clock |
-| `scenes/logo_video_fractal.py` | A saved checkpoint of scene 4's background experimentation: the same 3D-projected video-plane logo + glitch + contrast outline as scene 4, over a glowing braid, plus a wobbling wireframe ground mesh (jittered/Voronoi-like triangulated grid, real 3D perspective, converging toward the horizon like a pond/ocean surface) filling the bottom of the screen. Every triangle is always filled with a translucent base tint, individually shaded from a real surface normal derived from the wobble height field (actual topography — shadows/highlights — instead of one flat color); channel 10 ("pads") triggers make random triangles glow brighter/more saturated on top of that (quick attack, slow release), synced to MIDI clock, easing back to the base fill when quiet |
 | `assets/onsen1.png`, `assets/onsen2.png` | Individual "温" / "泉" glyph textures used by `kaleidoscope_video.py` |
 | `assets/oca_spin_loop_v3.mp4` | Source video used by every scene (via `video_texture.py`) |
 

@@ -3,11 +3,12 @@ feedback_trails.py
 -------------------
 Scene 2's previous background (a ping-pong feedback/blur buffer with two
 drifting blobs) has been replaced with the kaleidoscopic folding
-fractal that was originally built for — then removed from — scene 6
-(logo_video_fractal.py), per a change of heart: scene 6 keeps its
-current ground-mesh-lighting direction, and this fractal gets a home
-here instead rather than being discarded. The hollow white-outline logo
-overlay (shared with scenes 1 and 3) is unchanged.
+fractal that was originally built for — then removed from —
+logo_video_fractal.py (scene 5, after scenes 5/6 were later swapped),
+per a change of heart: that scene keeps its current ground-mesh-lighting
+direction, and this fractal gets a home here instead rather than being
+discarded. The hollow white-outline logo overlay (shared with scenes 1
+and 3) is unchanged.
 
 The fractal itself: a kaleidoscopic folding fractal (repeated fold +
 rotate + scale of the plane, the technique behind most "Mandelbox"/

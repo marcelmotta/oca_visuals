@@ -12,6 +12,386 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v58 — 2026-07-25 — Scene 5's logo: reverted to v53
+
+- **Reverted the logo material to its v53 state** per feedback — v54's
+  transparency push, v55's opacity/rounded-profile changes, v56's
+  single-unified-shader rewrite, and v57's backlight + blur-reduction
+  branch are all undone. None of v54-v57 had been committed (still on
+  git tag v45), so this was a manual reconstruction back to v53's
+  actual code rather than a `git checkout`: two separate fragment
+  shaders again (`LOGO_FRAGMENT` for the back/side slices,
+  `LOGO_FRAGMENT_GLASS` for the front face), `LOGO_FRONT_ALPHA=0.7` /
+  `LOGO_BACK_TARGET_OPACITY=0.3` (compounding to ~9% back-stack weight,
+  ~70% front, ~21% plain background), a straight linear Z-offset/darken
+  ramp (not v55's rounded quarter-circle profile), and no backlight/
+  depth_t/refraction-branch code.
+- Verified by compiling both shaders against a standalone ModernGL
+  context and running the full scene's update()/render() over 30
+  frames with large time steps (to sweep the tilt range quickly),
+  including through a resize() — output matches v53's documented alpha
+  values exactly (front 0.7, back per-slice ~0.0252).
+
+## v57 — 2026-07-25 — Scene 5's logo: backlight, fixed "aerogel"-looking blur
+
+- **Added a backlight**, a light source positioned behind the screen
+  shining toward the viewer through the glass, per feedback specifically
+  requesting this. A light in front only produces a reflection-style
+  highlight (already had one — the existing key-light specular); a
+  light from behind needs a different technique since the standard
+  Blinn-Phong half-vector trick degenerates when light and view
+  direction are nearly opposite. Used the classic transmission/rim-glow
+  approach for backlit translucent materials instead: a warm-tinted glow
+  wherever the letter shape's own edge gradient is large (concentrated
+  right at curved edges — the same geometry the refraction is keyed to)
+  plus a global rim contribution from the existing Fresnel term, so
+  light visibly rims more of the silhouette as the plane tilts.
+- **Fixed the "looks like aerogel"/blurry complaint**: root cause was
+  ALL 15 stacked slices independently warping + chromatic-aberration-
+  splitting the background — under alpha blending, that many near-
+  duplicate, slightly-offset samples average out into a soft milky wash
+  (the same way a long exposure blurs a moving subject), which reads as
+  diffuse frosted foam rather than clear glass. Full chromatic
+  refraction is now applied only to the ~8 slices closest to the true
+  front face (`u_depth_t < 0.35`); the remaining back/side slices take
+  one plain, unwarped background sample instead — a uniform (per-draw-
+  call) branch, not a per-pixel one, so it's free on any GPU.
+- Verified numerically: typical local edge-glow contribution ~0.5-0.65
+  at real edge gradients (clamped to 1.0 at the theoretical extreme);
+  refraction offset worst-case ~0.56 screen-uv units (down from ~0.67,
+  since the branch also removes the old depth-based upscaling that no
+  longer serves a purpose once back slices skip refraction entirely),
+  typical case unchanged ~0.045; 8 of 15 slices now do the expensive
+  chromatic sampling instead of all 15.
+- Verified by compiling the shader against a standalone ModernGL
+  context and running the full scene's update()/render() over 30
+  frames with large time steps (to sweep the tilt range quickly),
+  including through a resize().
+
+## v56 — 2026-07-25 — Scene 5's logo: rewritten as one unified glass material
+
+- **Full rewrite of the logo's material**, per feedback that it looked
+  like three separately-textured layers (the front "surface", the
+  rounded "radius", and the flat "side/back") rather than one coherent
+  piece of glass. Root cause: the front face and the back/side slices
+  were two ENTIRELY DIFFERENT fragment shaders (`LOGO_FRAGMENT_GLASS`
+  did background refraction + chromatic aberration + gloss; the plain
+  `LOGO_FRAGMENT` back/side slices only did a flat tint + darken) —
+  structurally two different materials, not one.
+- **Merged into a single fragment shader** (`LOGO_FRAGMENT`) used by
+  every slice of the extrusion, front and back alike. Each slice is
+  fed one continuous parameter, `u_depth_t` (0 at the front face, 1 at
+  the farthest-back slice, from the same rounded/quarter-circle profile
+  that already shaped the Z-spacing) that smoothly reshapes:
+  - **opacity** — per-slice alpha scales with depth (front thinner/
+    clearer, back slices ~4x more opaque), replacing the old two
+    unrelated alpha constants;
+  - **video-tint vs. refracted-background mix** — deeper slices lean
+    more toward the character's own tinted color (a Beer-Lambert-ish
+    "light picks up more of the medium's color the further it
+    travels" cue), shallower slices lean more toward the clear
+    refracted background;
+  - **refraction strength** — scales up slightly with depth on top of
+    the existing Fresnel/view-angle scaling, so deeper "glass" bends
+    the background more, same idea as a thicker window warping a
+    grazing view more.
+  - Every slice — not just the front — now does full background
+    refraction + chromatic aberration, so the sides read as genuine
+    glass too instead of a flat shaded chamfer.
+- **Glossier, more light-responsive**: added a second, tight Blinn-Phong
+  specular lobe on top of the existing broad sheen (a "glint" on top of
+  a "sheen" — the combination that actually reads as glossy/slick
+  rather than one dull highlight), both lobes scaled by the existing
+  Schlick-like Fresnel term so the material visibly reacts more
+  strongly to light as the plane tilts.
+- Verified numerically before implementing: per-slice alpha curve
+  (`LOGO_BASE_ALPHA=0.07`, `LOGO_ALPHA_FRONT_RATIO=0.25`) gives a
+  front-slice alpha of ~0.018 and a back-slice alpha of ~0.07, with the
+  whole 15-slice stack compounding to ~0.43 cumulative opacity at rest
+  and ~0.78 at the plane's most edge-on real pose — translucent
+  throughout, never pinned near fully opaque. Refraction offset
+  worst-case ~0.67-0.77 screen-uv units (clamped in-shader, NaN/Inf-
+  free), typical case ~0.045.
+- Verified by compiling the unified shader against a standalone
+  ModernGL context and running the full scene's update()/render() over
+  30 frames with large time steps (to sweep the tilt range quickly),
+  including through a resize().
+
+## v55 — 2026-07-25 — Scene 5's logo: reverted transparency push, more opaque + rounded back/side slices
+
+- **Reverted v54's "as transparent as possible" pass** — `LOGO_FRONT_
+  ALPHA` back to 0.7 (from 0.22).
+- **Back/side slices made more opaque than even the original baseline**
+  per feedback: `LOGO_BACK_TARGET_OPACITY` 0.3 -> 0.6 (not just
+  reverted — pushed further). Verified numerically: the back/side stack
+  now carries ~18% of the final pixel's color (up from ~9% at the
+  original 0.3 baseline), front face still ~70%, plain background ~12%.
+- **Smoother/rounded bevel profile**: the back/side slices' Z-spacing
+  and darkening used to follow a straight linear ramp (constant rate
+  the whole way), which kinks sharply where it meets the flat front
+  face and again where it meets the side — a mitered corner, not a
+  rounded one. Both now follow a quarter-circle profile instead
+  (`cos`/`sin` of the slice parameter over 0..pi/2) — zero slope at the
+  front (tangent to the flat face, so slices near the front barely
+  change from one to the next) and maximum slope at the back (tangent
+  to the side, changing fastest right at the edge) — reads as a genuine
+  rounded fillet rather than a hard chamfer. Verified numerically: the
+  slope ratio between the back and front ends of the profile is
+  ~13000:1, vs. a flat 1:1 for the old linear ramp.
+- Verified by compiling both logo shaders against a standalone ModernGL
+  context and running the full scene's update()/render() over several
+  frames, including through a resize().
+
+## v54 — 2026-07-25 — Scene 5's logo: pushed as transparent as possible
+
+- **`LOGO_FRONT_ALPHA` 0.7 -> 0.22, `LOGO_BACK_TARGET_OPACITY` 0.3 ->
+  0.08** per feedback to make it as transparent as possible. Verified
+  numerically: the front face now carries only ~22% of the final
+  pixel's color (down from ~70%), the back/side stack ~6% (down from
+  ~9%), and the plain undistorted background dominates at ~72% (up from
+  ~21%).
+- The alpha-cutout discard (`if (alpha <= 0.01) discard;`, unchanged)
+  still fully skips drawing anywhere the letter shapes aren't, so the
+  logo stays a legible silhouette rather than fading to nothing — at
+  this opacity it reads mainly through its edges (Fresnel rim +
+  specular gloss, both left at full strength) rather than flat fill
+  color, which is consistent with how thin/clear glass actually looks.
+- Verified by compiling both logo shaders against a standalone ModernGL
+  context and running the full scene's update()/render() over several
+  frames.
+
+## v53 — 2026-07-25 — Scene 5's logo: fixed blur, angle-reactive light, anti-aliased edges
+
+- **Fixed "blurry texture"**: the sinusoidal "shimmer" term (added in
+  v51) applied a rapidly-varying warp offset across the ENTIRE letter
+  surface, not just its edges — under linear texture filtering this
+  smeared the background sample into visual noise rather than a
+  deliberate distortion. Dropped it entirely; refraction is now driven
+  purely by the letter shape's own edge gradient, which is near-zero in
+  flat interior regions — those now sample the background cleanly, with
+  all the bending concentrated at the actual geometry (edges/curves).
+- **Material now reacts to viewing angle** (perspective), not just a
+  flat rim brighten: the Fresnel term is now a Schlick-like curve
+  (`FRESNEL_F0` at dead-on, rising toward 1.0) instead of the old linear
+  ramp — but remapped against this scene's own actual tilt range
+  (verified numerically: the plane's yaw/pitch/roll animation never
+  gets more edge-on than `abs(normal.z) ~= 0.64`, so a textbook Schlick
+  curve over the full 0..1 range would barely move at all in practice).
+  Both the refraction density and the specular sheen's intensity now
+  scale with this same term each frame — steeper viewing angle bends
+  the background more (more effective glass thickness the light
+  crosses, same reason a windshield warps more at a grazing glance) and
+  the highlight brightens, instead of staying constant regardless of
+  tilt.
+- **Smoothed the "fake"-looking edges**: the alpha cutout now sizes its
+  smoothstep transition band from `fwidth(lum)` (how fast luminance
+  changes between screen-space neighbor pixels) instead of a fixed
+  luminance-space band — this keeps the edge anti-aliased to
+  approximately one screen pixel regardless of the logo's on-screen
+  size, fixing jagged/fake-looking edges without the earlier fixed band
+  being too soft or too sharp depending on scale.
+- Verified numerically: worst-case combined refraction offset (both
+  mask-gradient axes maxed, chromatic split, dynamic density at the
+  plane's most edge-on real pose) ~0.64 screen-uv units — large, but
+  only at that rare edge+extreme-tilt combination, always clamped
+  in-shader, NaN/Inf-free; typical case near dead-on stays ~0.045.
+  Verified by compiling both logo shaders against a standalone ModernGL
+  context and running the full scene's update()/render() over 30
+  frames with large time steps (to sweep the tilt range quickly),
+  including through a resize().
+
+## v52 — 2026-07-25 — Scene 5's logo: front glass face now actually dominates (v51's effects were invisible)
+
+- **Root cause of v51's gloss/warp being invisible**: the front glass
+  face and the 14 back/side slices were all sharing one alpha value
+  solved so their *combined* stack read as translucent — but that
+  meant the front face (the one with all the new gloss/refraction
+  work) only carried ~5-10% of the final pixel's color. The rest was
+  the plain matte back-stack tint and the undistorted background
+  showing through underneath — so the glossy/warped material was
+  technically rendering, just drowned out.
+- **Split into two separate alphas**: `LOGO_FRONT_ALPHA` (0.7, a direct
+  opacity — the front face is the primary surface being looked at/
+  through, so it should dominate) and `LOGO_BACK_SLICE_ALPHA` (solved
+  the same compounding-alpha way as before, but only across the 14
+  back/side slices, targeting a modest 0.3 cumulative — just a subtle
+  bevel/depth cue). Verified numerically: front face now carries ~70%
+  of the final pixel, the back stack ~9%, plain background peeking
+  through underneath ~21% (which is what keeps it reading as
+  translucent rather than a solid card despite the front's own fairly
+  high alpha).
+- **Chromatic aberration** added to the front face's background
+  sampling (R/G/B channels read through slightly different refraction-
+  offset scales) — the classic, always-visible "looking through thick
+  glass/a lens" cue. This matters because the plain per-pixel warp
+  offset (v49/v51) is only visible where the background already has
+  sharp detail to distort; a color-fringed edge reads as glass
+  regardless of what's behind it.
+- **Front face lightened**: less desaturation (0.45 -> 0.2) and a
+  lighter tint (was darkening ~20%, now ~5-8%) than the back/side
+  slices, which keep the darker "smoked"/shadowed look appropriate for
+  an extrusion's hidden sides — this is what was reading as uniformly
+  "too smoked" before.
+- **Specular broadened and brightened** on the front face (shininess
+  24 -> 9, intensity 0.6 -> 1.1) and back/side slices (24 -> 10, 0.5 ->
+  0.8) so the glossy sheen is clearly visible rather than a near-
+  invisible pinpoint highlight.
+- **Refraction density raised** (`LOGO_REFRACT_DENSITY` formula's depth
+  multiplier 12 -> 20, ~1.6 -> 2.0 at the current extrusion depth).
+- Verified numerically: worst-case combined refraction offset (incl.
+  the chromatic split) ~0.22 screen-uv units, still explicitly clamped
+  in-shader and NaN/Inf-free. Verified by compiling both logo shaders
+  against a standalone ModernGL context and running the full scene's
+  update()/render() for several frames, including through a resize().
+
+## v51 — 2026-07-25 — Scene 5's logo: glossy specular sheen, denser refraction
+
+- **Glossy specular highlight**, on both the front glass face and the
+  extrusion's back/side slices: a fake surface normal is "bumped" from
+  the same per-pixel letter-edge gradient already used for refraction
+  (strongest at curves/corners, flat elsewhere), lit with a fixed key
+  light via a Blinn-Phong highlight. The view direction feeding it is
+  computed CPU-side from the plane's own rotation (un-rotating the
+  world "toward camera" axis by the model matrix's transpose, same
+  trick as the existing Fresnel term), so the highlight actually slides
+  across the surface as the plane tilts through its existing animation
+  instead of looking painted on.
+- **Denser refraction**: the background-warp offset (from v49) is now
+  scaled by `LOGO_REFRACT_DENSITY`, derived from `LOGO_EXTRUDE_DEPTH`
+  itself (1.0 + depth*12 ≈ 1.6 at the current depth) rather than a bare
+  constant — a thicker glass block now genuinely bends the background
+  more, tying the warp strength to both the logo's actual geometry
+  (edge gradient + extrusion depth) and its material (the density
+  multiplier), per feedback asking for exactly that connection. Base
+  gradient sampling width and shimmer amplitude were also widened for a
+  broader, more visible "bending zone" around each letter's edges.
+- Verified numerically before tuning: worst-case combined refraction
+  offset ~0.15 screen-uv units (up from ~0.048), typical case ~0.08,
+  still bounded/NaN-free and still explicitly clamped in-shader;
+  specular contribution ranges 0 to ~0.55 across sampled view angles,
+  also NaN/Inf-free. Verified by compiling both logo shaders against a
+  standalone ModernGL context and running the full scene's update()/
+  render() for several frames, including through a resize() call.
+
+## v50 — 2026-07-25 — Scene 5's logo: fixed opaque-looking glass (alpha compounding bug)
+
+- **Fixed the stacked-extrusion glass reading as "completely opaque"**
+  per feedback, despite each individual slice's alpha being tuned for
+  translucency. Root cause: `LOGO_GLASS_ALPHA` was applied directly as
+  each of the 15 stacked slices' own alpha, but standard "over" alpha
+  blending compounds across layers — `1-(1-a)^n` — so 15 layers at
+  alpha 0.5 each converges to ~99.997% opaque no matter how
+  translucent any single slice looks alone (verified numerically).
+- `LOGO_GLASS_ALPHA` is now solved so the FULL 15-layer stack converges
+  to a target *cumulative* opacity (`LOGO_TARGET_OPACITY = 0.5`)
+  instead: ~0.045 per-slice alpha, verified numerically to produce
+  ~0.50 cumulative opacity at rest, rising to ~0.79 at the most extreme
+  Fresnel-boosted grazing angle (the correct direction — real glass
+  gets more reflective/opaque at grazing angles too). No other logic
+  changed.
+- Verified by compiling every shader against a standalone ModernGL
+  context and running update()/render() for several frames.
+
+## v49 — 2026-07-25 — Scene 5's logo: actual background refraction, not just tint
+
+- **Real "seen through glass" refraction**, per feedback that v48's
+  tint + reduced alpha still read as a faded image, not glass. The
+  scene's bg braid + ground mesh now render into an offscreen texture
+  (`bg_capture_fbo`, a new FBO sized to the real output resolution,
+  recreated on resize) before being copied onto the actual `target`
+  via a plain blit pass — this makes "what's currently behind the
+  logo" available as a texture the logo itself can sample a second
+  time.
+- The extrusion's front-most slice (the "face" actually being looked
+  through) now uses a new fragment shader, `LOGO_FRAGMENT_GLASS`,
+  instead of the flat-tint material the back/side slices still use:
+  it samples the captured background at a UV offset by (1) the local
+  gradient of the letter shape's own alpha mask — strongest right at
+  a curved edge, near-zero in flat interior/exterior regions, so it
+  behaves like a real embossed glass letter bending light most at its
+  boundary — plus (2) a slow sinusoidal shimmer so flat interior areas
+  aren't perfectly optically flat either. The warped sample is mixed
+  mostly-background/some-video-tint so the character still reads as
+  itself.
+- Verified numerically before writing the GLSL: worst-case combined
+  refraction offset ~0.048 in screen-uv units, typical single-edge
+  contribution ~0.007, no NaN/Inf — bounded enough to always sample
+  nearby background rather than an unrelated part of the screen; UV is
+  also explicitly clamped to [0,1] in the shader regardless. Verified
+  by compiling every shader in the file against a standalone ModernGL
+  context, then instantiating the actual scene, running update()/
+  render() for several frames (including through a resize() call) into
+  an offscreen framebuffer, all without errors.
+
+## v48 — 2026-07-25 — Scene 5's logo: shallower depth, smoked-glass material
+
+- **Extrusion depth halved** (`LOGO_EXTRUDE_DEPTH` 0.1 -> 0.05) per
+  feedback.
+- **Logo material changed to translucent "smoked glass"**: each stacked
+  slice's color is now desaturated and cool-tinted, and its opacity is
+  scaled down (`LOGO_GLASS_ALPHA` = 0.5) rather than fully opaque — see-
+  through rather than solid, with stacked translucent layers building
+  up into a more substantial look, the way a thick block of glass reads
+  differently than a single thin pane. Also added a Fresnel-like rim
+  term (brighter, slightly more opaque at grazing angles), computed
+  once per frame from the plane's own rotated normal (it's still a flat
+  surface, so this is uniform across it rather than per-pixel) — the
+  classic visual cue that sells a glass/translucent material as the
+  plane tilts through its existing animation.
+- Verified numerically before implementing the Fresnel term: sampled it
+  across the scene's actual yaw/pitch/roll ranges and confirmed a sane,
+  bounded 0.0 (facing the camera dead-on) to ~0.36 (at the most extreme
+  tilt combinations) with no instability. Also verified by launching
+  the app and confirming the shader still compiles and runs with no GL
+  errors.
+
+## v47 — 2026-07-25 — Scene 5's logo now has real depth (stacked-extrusion technique)
+
+- **Dropped the dark contrast outline in scene 5** (`logo_video_fractal.py`)
+  per feedback — superseded by the 3D depth below, which does the job
+  of separating the logo from the background on its own.
+- **First attempt at "make the logo 3D" discarded**: subdividing the
+  quad into an 80x80 grid and displacing each vertex along Z by the
+  video's own per-vertex luminance, with normal-based emboss shading on
+  top, shipped "completely distorted, jagged" per feedback. Root cause:
+  vertex displacement can only be as smooth/precise as the mesh
+  resolution, but the alpha cutout that actually defines the visible
+  silhouette is evaluated per-PIXEL — there's no practical grid
+  resolution at which a displaced, linearly-interpolated shape reliably
+  lines up with crisp per-pixel letter edges. That mismatch between
+  "what's opaque" and "what's extruded" is what read as distortion.
+- **Replaced with the classic "stack of cutouts" technique** for faking
+  extruded 2D shapes in 3D: kept the ORIGINAL simple flat quad exactly
+  as it always was (so the visible silhouette is exactly as
+  pixel-precise as before — no mesh resolution involved at all), and
+  draw 15 progressively darker copies of it stacked behind the front
+  one along Z (farthest/darkest first, nearest/original-brightness
+  last, correct back-to-front order with no depth buffer needed).
+  Viewed through the scene's existing camera tilt, that stack reads as
+  a genuine beveled side/thickness. Every individual slice is still
+  just the same crisp, unmodified per-pixel video sampling as always —
+  the video's own animation, the glitch effect, and the camera tilt are
+  all otherwise unchanged.
+- Verified numerically: the darken/Z-offset progression across all 15
+  slices lands exactly on the intended range (darkest/farthest at
+  -0.1 depth/0.35 brightness, front slice at 0 depth/1.0 brightness,
+  evenly spaced in between). Also verified by launching the app and
+  confirming the shader still compiles and runs with no GL errors.
+
+## v46 — 2026-07-24 — Thinner logo outline; scenes 5 and 6 swapped
+
+- **Logo contrast outline (scenes 4 and 6 — see below for the renumber)
+  thinned slightly** (`OUTLINE_THICKNESS` 0.004 -> 0.003).
+- **Swapped scene positions 5 and 6**: `kaleidoscope_video.py` is now
+  reached via program 5 / key `6` (was key `5`), and `logo_video_fractal.py`
+  is now program 4 / key `5` (was key `6`) — just `config.py`'s
+  `SCENE_PROGRAM_MAP`, no change to either scene's own behavior. Updated
+  every "scene 5"/"scene 6" reference across the docs and scene files
+  to match the new numbering (`kaleidoscope_video.py`'s own header
+  comment, `feedback_trails.py`'s docstring, `hollow_logo.py`'s docstring,
+  and README.md) — CHANGELOG.md entries below this one are left as-is
+  since they're a historical record of what was true at the time.
+
 ## v45 — 2026-07-24 — Scene 6: ground mesh triangles now actually shaded (real topography), snappier trigger, more translucent
 
 - **Real per-vertex shading, not a flat color** — per feedback that
