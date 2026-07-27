@@ -90,6 +90,13 @@ class SceneManager:
         tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
         return self.ctx.framebuffer(color_attachments=[tex])
 
+    def teardown(self):
+        """Releases every scene's own GPU/decoder resources (video
+        captures, extra framebuffers, etc — see scene_base.Scene.teardown).
+        Call this once, before the app exits."""
+        for scene in self.scenes.values():
+            scene.teardown()
+
     def resize(self, width, height):
         """Recreates the crossfade buffers at a new size.
 

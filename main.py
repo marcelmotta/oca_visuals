@@ -195,6 +195,38 @@ def main():
 
         glfw.swap_buffers(window)
 
+    # Clean shutdown. Release scene/GPU resources and close the MIDI
+    # port explicitly rather than just letting the process exit out from
+    # under them — and, critically, if the window is still attached to a
+    # monitor (true GLFW fullscreen, i.e. FULLSCREEN=True in config.py),
+    # switch it back to windowed BEFORE destroying it.
+    #
+    # This last part is what fixes a real bug: quitting (ESC) straight
+    # out of fullscreen was freezing the window instead of closing it.
+    # glfwDestroyWindow/glfwTerminate on a window still attached to a
+    # monitor asks the OS to tear down the fullscreen presentation and
+    # destroy the window in the same breath; on macOS in particular, the
+    # window/display-capture teardown races with our own process exit,
+    # and without further event-pump cycles to let that settle, the
+    # WindowServer can leave the (now half-destroyed) window stuck on
+    # screen, unresponsive to any further input. Explicitly returning to
+    # windowed mode first, then polling a few frames before destroying
+    # the window, lets that transition finish on its own terms instead.
+    scene_manager.teardown()
+    if midi_port is not None:
+        try:
+            midi_port.close()
+        except (IOError, OSError):
+            pass  # already gone (e.g. device unplugged) — nothing to clean up
+
+    if glfw.get_window_monitor(window):
+        glfw.set_window_monitor(window, None, 100, 100, WINDOW_WIDTH, WINDOW_HEIGHT, 0)
+        for _ in range(10):
+            glfw.poll_events()
+            time.sleep(1.0 / 60.0)
+
+    ctx.release()
+    glfw.destroy_window(window)
     glfw.terminate()
 
 

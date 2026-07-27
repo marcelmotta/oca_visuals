@@ -12,6 +12,44 @@ know what a version contains).
 - Go back to the latest: `git checkout main`
 - Compare two versions: `git diff v1 v2`
 
+## v59 — 2026-07-28 — Fixed window freeze when quitting out of fullscreen
+
+- **Fixed a freeze/hang on exit**: quitting (ESC) while running in
+  fullscreen (`FULLSCREEN = True` in config.py) could leave the window
+  stuck on screen, unresponsive to any further input, instead of
+  actually closing. Root cause: the app called `glfw.terminate()`
+  directly on a window still attached to a monitor (true GLFW
+  fullscreen) — destroying/terminating in that state asks the OS to
+  tear down the fullscreen presentation and destroy the window in the
+  same breath, and on macOS that teardown can race with the process
+  exiting, leaving the WindowServer stuck mid-transition with a half-
+  destroyed window that never finishes closing.
+- Fixed by explicitly switching the window back to windowed mode
+  (`glfw.set_window_monitor(window, None, ...)`) and polling a few
+  frames to let that settle BEFORE destroying the window — the
+  standard GLFW-recommended pattern for a clean fullscreen exit. This
+  only runs if the window is actually in true fullscreen
+  (`glfw.get_window_monitor` returns non-null); it's a no-op for the
+  normal windowed case, so this doesn't change behavior for anyone not
+  running `FULLSCREEN = True`.
+- Also fixed a related gap found while debugging this: nothing ever
+  released scene resources (video decoders, extra framebuffers — see
+  `Scene.teardown()`), closed the MIDI port, or released the moderngl
+  context on exit — the app just let the process die out from under
+  them. Added `SceneManager.teardown()` (calls every scene's own
+  `teardown()`) and explicit MIDI-port/context cleanup, run before the
+  window is destroyed.
+- Verified: confirmed via a stashed A/B comparison that an unrelated
+  early-exit quirk seen while testing in this sandboxed environment
+  (a scene auto-switching a few seconds after launch, then the process
+  ending) reproduces IDENTICALLY on the pre-fix code, so it's a
+  pre-existing artifact of running an interactive GUI app through this
+  particular background-process setup, not something this change
+  caused. Could not interactively verify the actual ESC-while-
+  fullscreen repro live in this environment (no persistent GUI/keyboard
+  session) — recommend confirming on the real show machine, especially
+  with `FULLSCREEN = True` on the actual projector/output display.
+
 ## v58 — 2026-07-25 — Scene 5's logo: reverted to v53
 
 - **Reverted the logo material to its v53 state** per feedback — v54's
